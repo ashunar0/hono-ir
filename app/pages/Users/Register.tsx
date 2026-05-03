@@ -1,10 +1,9 @@
 import { useForm } from "@inertiajs/react";
-import type { RegisterPageProps } from "../../../src/features/users";
 
-export default function Register({ values, errors }: RegisterPageProps) {
+export default function Register() {
   const form = useForm({
-    username: values.username,
-    email: values.email,
+    username: "",
+    email: "",
     password: "",
   });
 
@@ -26,7 +25,9 @@ export default function Register({ values, errors }: RegisterPageProps) {
               onChange={(e) => form.setData("username", e.target.value)}
             />
           </label>
-          {errors.username && <p style={{ color: "red" }}>{errors.username}</p>}
+          {form.errors.username && (
+            <p style={{ color: "red" }}>{form.errors.username}</p>
+          )}
         </div>
         <div>
           <label>
@@ -37,7 +38,9 @@ export default function Register({ values, errors }: RegisterPageProps) {
               onChange={(e) => form.setData("email", e.target.value)}
             />
           </label>
-          {errors.email && <p style={{ color: "red" }}>{errors.email}</p>}
+          {form.errors.email && (
+            <p style={{ color: "red" }}>{form.errors.email}</p>
+          )}
         </div>
         <div>
           <label>
@@ -48,7 +51,9 @@ export default function Register({ values, errors }: RegisterPageProps) {
               onChange={(e) => form.setData("password", e.target.value)}
             />
           </label>
-          {errors.password && <p style={{ color: "red" }}>{errors.password}</p>}
+          {form.errors.password && (
+            <p style={{ color: "red" }}>{form.errors.password}</p>
+          )}
         </div>
         <button type="submit" disabled={form.processing}>
           Sign up
