@@ -8,7 +8,10 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply hono-ir --local",
+    "db:migrate:remote": "wrangler d1 migrations apply hono-ir --remote"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.2",
@@ -16,6 +19,7 @@
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "drizzle-kit": "^0.31.10",
     "vite": "^8.0.10",
     "wrangler": "^4.85.0"
   },
@@ -26,6 +30,7 @@
     "@hono/inertia": "^0.1.0",
     "@hono/zod-validator": "^0.7.6",
     "@inertiajs/react": "^3.0.3",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.15",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
