@@ -7,3 +7,10 @@ export const createUserSchema = z.object({
 });
 
 export type CreateUserRequest = z.infer<typeof createUserSchema>;
+
+export const loginUserSchema = z.object({
+  email: z.string().min(1, "email is required").email("invalid email"),
+  password: z.string().min(1, "password is required"),
+});
+
+export type LoginUserRequest = z.infer<typeof loginUserSchema>;
