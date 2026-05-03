@@ -1,30 +1,46 @@
-import { argon2id } from "hash-wasm";
 import type { Db } from "../../db/client";
 import { sessionRepo, userRepo } from "./repository";
 import type { CreateUserRequest } from "./validators";
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-// パスワードをハッシュ化
+const PBKDF2_ITERATIONS = 100_000;
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_HASH_BITS = 256;
+
+const toHex = (bytes: Uint8Array): string =>
+  Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+// Web Crypto PBKDF2-SHA256 でパスワードをハッシュ化
+// 保存形式: pbkdf2$<iterations>$<salt-hex>$<hash-hex>
 const hashPassword = async (password: string): Promise<string> => {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  return argon2id({
-    password,
-    salt,
-    parallelism: 1,
-    iterations: 2,
-    memorySize: 19456, // OWASP 推奨 (~19 MB)
-    hashLength: 32,
-    outputType: "encoded",
-  });
+  const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const hashBuffer = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    PBKDF2_HASH_BITS,
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt)}$${toHex(new Uint8Array(hashBuffer))}`;
 };
 
 // セッションIDを生成
 const generateSessionId = () => {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return toHex(bytes);
 };
 
 // 新規登録の orchestration。

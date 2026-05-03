@@ -31,7 +31,6 @@
     "@hono/zod-validator": "^0.7.6",
     "@inertiajs/react": "^3.0.3",
     "drizzle-orm": "^0.45.2",
-    "hash-wasm": "^4.12.0",
     "hono": "^4.12.15",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
