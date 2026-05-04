@@ -1,6 +1,7 @@
 import type { Db } from "../../db/client";
+import { followRepo } from "../follows/repository";
+import { resolveIsFollowing } from "../follows/service";
 import { userRepo } from "../users/repository";
-import { followRepo } from "./repository";
 
 // プロフィール取得の orchestration。
 // 戻り値は tagged union: { kind: "ok", user, isFollowing } | { kind: "not_found" }
@@ -11,15 +12,11 @@ export async function getProfile(
   username: string,
 ) {
   const users = userRepo(db);
-  const follows = followRepo(db);
 
   const target = await users.findByUsername(username);
   if (!target) return { kind: "not_found" as const };
 
-  const isFollowing =
-    viewerId !== undefined && viewerId !== target.id
-      ? await follows.exists(viewerId, target.id)
-      : false;
+  const isFollowing = await resolveIsFollowing(db, viewerId, target.id);
 
   return { kind: "ok" as const, user: target, isFollowing };
 }

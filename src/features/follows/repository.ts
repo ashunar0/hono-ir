@@ -16,7 +16,10 @@ export const followRepo = (db: Db) => ({
 
   // フォロー作成。重複は INSERT OR IGNORE 相当 (PK 衝突は無視)
   async create(followerId: number, followingId: number) {
-    await db.insert(follows).values({ followerId, followingId }).onConflictDoNothing();
+    await db
+      .insert(follows)
+      .values({ followerId, followingId })
+      .onConflictDoNothing();
   },
 
   // フォロー解除。存在しなくてもエラーにしない
