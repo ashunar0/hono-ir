@@ -153,14 +153,14 @@ docs/
 - [x] **Inertia 流 redirect-back errors (Phase 2.5)**: `lib/inertia-helpers.ts` で `c.back({ errors })` middleware を user-land 注入。validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一。dev mode の plain JSON overlay 解消、`useForm.errors` 自動マージが効く。Phase 3 PR で adapter に取り込む API 形を先取り
 - [x] **Profiles**: schema (`follows` テーブル + migration 0003) + GET / follow / unfollow。`basePath("/profiles/:username")` 採用、self-follow は service 層 (`cannot_follow_yourself` + `c.back` で flash error) と DB CHECK 制約で二重防止。Profile page は最小実装 (username + bio + image + Follow/Unfollow ボタン、自分なら "This is your profile."、未ログイン閲覧可)
 - [x] **follows feature 独立**: `features/follows/` に切り出し。`resolveIsFollowing(db, viewerId, targetId)` を共通 helper として、profile / article (将来) で再利用可能に
+- [x] **Update User** (`PUT /user`): `features/users/` を route 化、`GET /settings` (form 表示) + `PUT /user` (更新) の 2 routes。全 field optional、重複チェックは自分以外、password は変更時のみ PBKDF2 hash。validator preprocess で空文字を field 別に正規化 (email/username/password → undefined "変更しない"、bio/image → null "clear")。form は `noValidate` で HTML5 validation 無効化 → サーバ validate 一本
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Update User** (`/user` PUT 相当、bio / image 編集も含む)
-2. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
-3. **Comments**
-4. **Favorites**
-5. **Tags**
+1. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
+2. **Comments**
+3. **Favorites**
+4. **Tags**
 
 ### リファクタ候補
 
@@ -182,6 +182,10 @@ docs/
 - **self-follow は二重防止** (2026-05-04): service 層で `viewerId === target.id` を弾いて `cannot_follow_yourself` → `c.back` で flash error。DB 側も `CHECK (follower_id != following_id)` 制約。UI からは isSelf チェックで Follow ボタン非表示なので通常到達不可、URL 直叩きや外部 client 防止のため二重で守る
 - **follows は独立 feature** (2026-05-04 訂正): 当初 `features/profiles/repository.ts` に followRepo を置いていたが、article の author 表示でも同じ isFollowing 判定が必要になることを見越して `features/follows/` に切り出し。`resolveIsFollowing(db, viewerId, targetId)` を service helper として export、profile / article 両方が import する。依存方向は `profiles → follows + users`、将来 `articles → follows + users`。判断記録の「広く使う必要が出たら独立 feature 化」のトリガーが立ったタイミングで切り出した
 - **Profile 最小実装で記事一覧は後回し** (2026-05-04): RealWorld spec の Profile page には自分の記事一覧があるが、List feature 未実装なので最小実装 (username + bio + image + Follow/Unfollow) のみ。List 実装後に partial reload で組み込む
+- **Update User は users feature を route 化** (2026-05-04): auth は「認証」専用、Update User は「ユーザー情報管理」で意味が違う。path も `/user` 系なので users feature 側が筋。前回 (Hono-only) は users feature に signup/login/getCurrentUser/updateUser 全部入りだったが、今回は auth と users を分離する規約に合わせる
+- **path は `GET /settings` + `PUT /user`** (2026-05-04): RealWorld spec の API は `PUT /user` (単数 resource)、Inertia 化で初めて出る form 表示の page 名は spec の Settings page 呼称に合わせて `/settings`。`PUT /settings` で path 一貫性を取る案もあったが spec 準拠を優先
+- **空文字の解釈は validator preprocess に吸収** (2026-05-04): Inertia form は空欄でも `""` を送るので、解釈を service に押し付けるか validator で吸収するかが論点。前回 (Hono-only API) は service の `normalizeNullable` で正規化していたが、今回は **validator preprocess** に置いた。理由: (1) API 直叩きや curl でも同じ解釈になる、(2) service が素直になる、(3) field 別の解釈分岐 (email/username/password → undefined "変更しない"、bio/image → null "clear する") を validator 層で表現できる
+- **form は `noValidate` で HTML5 validation を無効化** (2026-05-04): `<input type="email">` の HTML5 constraint validation がブラウザレベルで submit をブロックする (invalid email だと fetch すら飛ばない、エラー表示も二重)。Inertia 流 (Laravel/Rails) は **サーバ validation 一本** が標準なので `noValidate` で無効化。エラー表示が `useForm.errors` 一箇所に集約 + 日本語カスタムメッセージ可、`validateJson` middleware で必ず validate してるので二重は不要。前回 (API only) では発生しなかった、Inertia 化で初めて出る論点
 
 その後 (大物):
 
@@ -194,68 +198,55 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `7800a6c refactor(follows): follow feature を独立させ isFollowing 判定を共通化` (この後 docs commit が乗る予定)
-- typecheck / build / Playwright 動作確認 全 OK (Profile 表示 / Follow / Unfollow / 404 / self-follow 二重防止)、follows 独立後も curl で lifecycle 再確認済み
-- ローカル D1: user (`asahi`, `errortest`, `follower`)。`follower` → `errortest` のフォロー関係は curl テスト後 follow 状態 (true) で残ってる
+- main: `bff9dc7 feat(users): プロフィール更新 (Update User) を実装` (この後 docs commit が乗る予定)
+- typecheck / build / Playwright 動作確認 全 OK: Settings 表示 / golden path (bio/image 更新) / email_taken / username_taken / validation error (invalid email) / bio 空文字 → null / password 変更 → 新 password で再ログイン / username 変更 → Profile 反映
+- ローカル D1: user 12 = `settingsupdatederrortest` (旧 `settingstest`)、password = `newpassword456`、bio = null、image = `https://example.com/avatar.png`。既存 user (`asahi`, `errortest`, `follower`) もそのまま残ってる
 - dev server は止めた
 
 ### 今日 (2026-05-04 続き) やったこと
 
-選択肢 A (validation error bug) と B (Profiles) を片付け、follows を独立 feature に切り出し。4 commits：
+選択肢 A (Update User) を片付け。1 commit:
 
-- `cedde84` feat(auth): validation errors を Inertia 流の redirect-back で表示
-- `a3f76a6` feat(profiles): プロフィール表示と follow/unfollow を実装
-- `805891a` chore(profiles): フォロー通知の flash 文言を整える
-- `7800a6c` refactor(follows): follow feature を独立させ isFollowing 判定を共通化
+- `bff9dc7` feat(users): プロフィール更新 (Update User) を実装
 
-ポイント (validation errors):
-- `lib/inertia-helpers.ts` 新設、`c.back({ errors, flash, fallback? })` を Context に user-land 注入 (middleware + module augmentation)
-- validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一
-- shared data の `errors` キーは Inertia core (client) の規約名なのでトップレベルで配信、`useForm.errors` 自動マージが効く
-- Phase 3 PR で adapter に取り込む API 形 (`c.back`) を user-land で先取り → 移行コスト 0 を狙う
+ポイント (Update User):
+- `features/users/` を route 化 (signup/login は auth feature、Update User だけ users 側)。前回 (Hono-only) は users 1 ファイル全部入りだったが、今回は auth/users 分離規約に合わせる
+- path: `GET /settings` (form 表示) + `PUT /user` (更新)。RealWorld spec の Settings page 呼称 + spec 準拠 path
+- validator preprocess で空文字を field 別に正規化:
+  - email/username/password 空文字 → undefined ("変更しない")
+  - bio/image 空文字 → null ("clear する")
+  - 前回 (Hono-only) は service の `normalizeNullable` でやっていたが、今回は validator 層に吸収 → service が素直に
+- form は `noValidate` で HTML5 validation を無効化 → サーバ validate 一本に統一
+- Settings page の useForm 初期値は `useAuth()` から取得 (shared data 経由)
 
-ポイント (profiles):
-- schema: `follows` テーブル (複合 PK + CHECK no_self_follow)、createdAt 省略 (YAGNI)
-- 当初は `features/profiles/repository.ts` に followRepo を置いて実装、その後 article でも author の follow 判定が要るのを見越して `features/follows/` に独立切り出し
-- index.ts は `.basePath("/profiles/:username")` で 3 routes (`/`, `/follow`, `/follow` DELETE) をまとめる
-- Profile page は最小実装、記事一覧は List 実装後
-
-ポイント (follows 独立):
-- `resolveIsFollowing(db, viewerId, targetId): Promise<boolean>` を共通 helper として export
-- 未ログイン (viewerId undefined) や自分自身 (viewerId === targetId) の場合は常に false
-- 依存方向: `profiles → follows + users`、将来 `articles → follows + users`
+途中で発見した bug + fix (Inertia 化で初めて出る論点):
+- `<input type="email">` の HTML5 constraint validation が submit をブラウザレベルでブロック → invalid email を入れると fetch すら飛ばない
+- `noValidate` を form に付けて解決。判断記録に記載
 
 ### 直前の議論で決まったこと
 
-- **Inertia 流 redirect-back 採用** + **`c.back` を user-land 先取り**: 既知 bug 解消、Phase 3 PR の API 形先取り
-- **`errors` キーは Inertia core 規約、`flash` は慣習**: adapter のお節介機能は (1) errors 自動収集 (2) `c.back` 風 helper の 2 つ
-- **保管場所は cookie 1 本に同居 (A 方式) で当面維持**: Workers の session 機構の見直しと一緒に判断
-- **profiles は basePath 採用**: 全 route が `/profiles/:username` 配下なので集約。articles のように混在 feature では使わない (basePath が嘘になる)
-- **self-follow は二重防止**: service (`cannot_follow_yourself` + `c.back`) と DB CHECK 制約。UI 側は `isSelf` で Follow ボタン非表示
-- **follows は独立 feature に切り出し**: 当初 profile feature 内に followRepo を置いたが、article 側でも author 表示で同じ isFollowing 判定が要ることを見越して `features/follows/` に切り出し。`resolveIsFollowing` を共通 helper 化。判断記録の「広く使う必要が出たら独立 feature 化」のトリガーに合致
-- **Profile 最小実装で記事一覧は後回し**: List 実装後に partial reload で組み込む
+- **Update User は users feature を route 化**: auth は認証専用。`/user` 系 path も users feature が筋
+- **path は `GET /settings` + `PUT /user`**: RealWorld spec の Settings page 呼称 + spec 準拠 path
+- **空文字の解釈は validator preprocess に吸収**: 前回 service の normalizeNullable から、今回は validator 層へ。service が素直 + curl/直叩きでも同じ解釈
+- **form は noValidate でサーバ validate 一本**: Inertia 流 (Laravel/Rails) の標準。HTML5 validation との二重は不要
+- **preprocess の使い方**: zod の入口側変換 hook。空文字を意味のある値に翻訳 (画面の言葉 → ドメインの言葉)。`.transform()` は出口側、`z.coerce.X()` は preprocess の特殊版
 
 ### 次セッション最初の一手
 
-選択肢：
+選択肢:
 
-**A. Update User** (`/user` PUT 相当)
-- 残タスク #1。auth feature の派生で軽め
-- form: email / username / password (optional) / image / bio
-- validator は `c.back` 化済みなので新 form もそのまま乗る
-- Profile の bio / image が空のままなので、入れたら Profile が見栄え変わる
-
-**B. Article 残機能 (List + Feed)**
+**A. Articles 残機能 (List + Feed)**
+- 残タスク #1。本丸
 - List: filter (author / tag / favorited) + pagination。tag/favorited は別 feature 依存だが author / 自分の Feed (follows ベース) は今すぐ可能
 - Feed: follows feature 完成済みなので即実装可
-- 完成すると Profile page に「自分の記事一覧」を partial reload で組み込める (Profile の完全形)
+- 完成すると Profile page に「自分の記事一覧」を partial reload で組み込める (Profile 完全形へ)
 
-**C. Phase 3: upstream PR**
+**B. Phase 3: upstream PR**
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
-- 今回の Phase 2.5 で API 形が固まった、Profile feature の動作確認も終わったので PR の中身が具体化
-- ただし保管場所 (cookie 1 本同居 vs 別 cookie) の議論が PR 設計時に再浮上、session 設計と一緒に詰める方針
+- API 形 (`c.back` メソッド形式、shared data closure lazy eval、partial reload filter) は user-land で固まり、動作確認も Profile / Update User で十分積んだので PR の中身は具体化済み
+- ただし保管場所 (cookie 1 本同居 vs 別 cookie) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
-A は軽くて Profile を見栄え良くする副次効果あり、B は List/Feed という本丸、C は外向きで今までの集大成。あさひさんに選んでもらう。
+A は本丸 (RealWorld の主役機能)、B は今までの集大成を外に出す。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
