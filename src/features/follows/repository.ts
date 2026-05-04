@@ -33,6 +33,15 @@ export const followRepo = (db: Db) => ({
         ),
       );
   },
+
+  // 自分がフォローしてる user の ID 一覧 (Feed の絞り込み用)
+  async findFollowingIds(followerId: number) {
+    const rows = await db
+      .select({ followingId: follows.followingId })
+      .from(follows)
+      .where(eq(follows.followerId, followerId));
+    return rows.map((r) => r.followingId);
+  },
 });
 
 export type FollowRepo = ReturnType<typeof followRepo>;

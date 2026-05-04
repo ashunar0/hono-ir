@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { users } from "../../db/schema";
 
@@ -6,6 +6,12 @@ export const userRepo = (db: Db) => ({
   // ID から user を取得。存在しなければ undefined
   findById(id: number) {
     return db.query.users.findFirst({ where: eq(users.id, id) });
+  },
+
+  // 複数 ID をまとめて取得 (記事一覧の author をバルク解決する用途)
+  findByIds(ids: number[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return db.query.users.findMany({ where: inArray(users.id, ids) });
   },
 
   // email から user を取得。存在しなければ undefined

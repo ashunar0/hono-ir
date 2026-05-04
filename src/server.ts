@@ -2,6 +2,8 @@ import { inertia } from "@hono/inertia";
 import { type Context, Hono } from "hono";
 import { createDb } from "./db/client";
 import articles from "./features/articles";
+import { feedArticles, listArticles } from "./features/articles/service";
+import { articlesQuerySchema } from "./features/articles/validators";
 import auth from "./features/auth";
 import { resolveAuthUser } from "./features/auth/service";
 import profiles from "./features/profiles";
@@ -10,6 +12,7 @@ import { consumeFlash } from "./lib/flash";
 import { inertiaHelpers } from "./lib/inertia-helpers";
 import { sharedData } from "./lib/inertia-share";
 import { loadAuth, type OptionalAuthVariables } from "./middleware/auth";
+import { validateQuery } from "./middleware/validator";
 import { rootView } from "./root-view";
 
 type Env = {
@@ -41,7 +44,23 @@ app.use(loadAuth);
 app.use(sharedData<Env>(share));
 
 const routes = app
-  .get("/", (c) => c.render("Home", { message: "Hello, Hono × Inertia!" }))
+  // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、author filter / pagination は query で受ける
+  .get("/", validateQuery(articlesQuerySchema), async (c) => {
+    const query = c.req.valid("query");
+    const db = createDb(c.env.DB);
+    const userId = c.var.userId;
+
+    let result: Awaited<ReturnType<typeof listArticles>>;
+    if (query.tab === "feed") {
+      // 未 login で Feed 要求 → login へ
+      if (userId === undefined) return c.redirect("/login", 303);
+      result = await feedArticles(db, userId, query);
+    } else {
+      result = await listArticles(db, query);
+    }
+
+    return c.render("Home", { query, ...result });
+  })
   .route("/", auth)
   .route("/", users)
   .route("/", profiles)

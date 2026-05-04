@@ -34,3 +34,15 @@ export function toArticleView(article: Article, author: User): ArticleView {
     },
   };
 }
+
+// 一覧用の article 形 (body を抜いた subset)。
+// favoritesCount / favorited / tagList は favorites/tags feature 実装時に拡張する
+export type ArticleListView = Omit<ArticleView, "body">;
+
+export function toArticleListView(
+  article: Article,
+  author: User,
+): ArticleListView {
+  const { body: _body, ...rest } = toArticleView(article, author);
+  return rest;
+}

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { type SQL, count, desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { articles } from "../../db/schema";
 
@@ -6,6 +6,25 @@ export const articleRepo = (db: Db) => ({
   // slug から記事を取得。存在しなければ undefined
   findBySlug(slug: string) {
     return db.query.articles.findFirst({ where: eq(articles.slug, slug) });
+  },
+
+  // 一覧取得。stable sort のため createdAt + id を desc で
+  list(where: SQL | undefined, limit: number, offset: number) {
+    return db.query.articles.findMany({
+      where,
+      limit,
+      offset,
+      orderBy: [desc(articles.createdAt), desc(articles.id)],
+    });
+  },
+
+  // 総件数
+  async count(where: SQL | undefined) {
+    const [row] = await db
+      .select({ total: count() })
+      .from(articles)
+      .where(where);
+    return row?.total ?? 0;
   },
 
   // 新規記事作成。createdAt/updatedAt は schema の $defaultFn で自動設定
