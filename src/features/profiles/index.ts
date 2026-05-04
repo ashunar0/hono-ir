@@ -38,7 +38,7 @@ const app = new Hono<Env>()
       return c.back({ flash: { error: "自分自身はフォローできません" } });
     }
 
-    setFlash(c, { success: `${username} をフォローしました` });
+    setFlash(c, { success: `@${username} さんをフォローしました` });
     return c.redirect(`/profiles/${username}`, 303);
   })
   // フォロー解除
@@ -52,7 +52,7 @@ const app = new Hono<Env>()
 
     if (result.kind === "not_found") return c.notFound();
 
-    setFlash(c, { success: `${username} のフォローを解除しました` });
+    setFlash(c, { success: `@${username} さんのフォローを解除しました` });
     return c.redirect(`/profiles/${username}`, 303);
   });
 
