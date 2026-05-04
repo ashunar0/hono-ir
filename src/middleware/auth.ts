@@ -1,9 +1,7 @@
-import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { createDb, type Db } from "../db/client";
 import { sessionRepo } from "../features/users/repository";
-
-const SESSION_COOKIE = "session_id";
+import { getSessionCookie } from "../lib/session-cookie";
 
 export type AuthVariables = {
   userId: number;
@@ -31,7 +29,7 @@ export const requireAuth = createMiddleware<{
   Variables: AuthVariables;
 }>(async (c, next) => {
   const db = createDb(c.env.DB);
-  const sessionId = getCookie(c, SESSION_COOKIE);
+  const sessionId = getSessionCookie(c);
 
   const userId = await resolveUserId(db, sessionId);
   if (userId === null) return c.redirect("/login", 303);
@@ -50,7 +48,7 @@ export const loadAuth = createMiddleware<{
   Variables: OptionalAuthVariables;
 }>(async (c, next) => {
   const db = createDb(c.env.DB);
-  const sessionId = getCookie(c, SESSION_COOKIE);
+  const sessionId = getSessionCookie(c);
 
   const userId = await resolveUserId(db, sessionId);
   if (userId !== null) c.set("userId", userId);
