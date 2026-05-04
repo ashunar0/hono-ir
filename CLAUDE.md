@@ -77,13 +77,14 @@ docs/
 - **3 層**: route (HTTP/Inertia) → service (orchestration) → repository (DB)。**1 行 passthrough でも層を飛ばさない** (規約 > YAGNI)
 - **依存方向は単方向**: `auth → session` (auth が sessionRepo / resolveUserId を import)、`auth → users`。逆向きは無し。Rails / Laravel と同じく **session ≠ auth** で session が下位 infra
 - **Repository は factory**: Workers の per-request DB を `userRepo(db)` で bind
-- **Service signature**: `(db, input)` のみ受ける。repo は service 内で組む
+- **Service signature**: 第 1 引数は `db: Db`、その後に必要な引数 (auth context など) と `input` を続ける。repo は service 内で組む。例: `signupUser(db, input)` / `createArticle(db, authorId, input)`
 - **Service 戻り値**: tagged union `{ kind: "ok" | "..." }`、`as const` で literal 保持。`Promise<...>` 型注釈は推論に任せる
 - **lib/ は feature-agnostic**: feature を import しない。pure / Context-only な helper のみ置く
 - **命名は役割で**: middleware/関数名は責務を動詞で表す (例: `requireAuth` / `loadAuth`)。`required`/`optional` のような設定形容詞は使わない
-- **Validation エラー**: `c.json({ errors }, 422)` で返す。`useForm.errors` が auto-merge する
-  - `c.render(SAME_PAGE, { values, errors })` の SSR スタイル再描画は **使わない** (CSR 文脈で redundant)
+- **Validation エラー**: `c.json({ errors }, 422)` で返す
   - エラー key は form field 名 (例: `email`)。form-level エラーは `credentials` 等で運用も可
+  - `c.render(SAME_PAGE, { values, errors })` の SSR スタイル再描画は **使わない** (CSR 文脈で redundant)
+  - **既知 bug**: `@hono/inertia` 0.1.0 では 422 response が Inertia format として認識されず、dev mode で plain JSON overlay が出て `useForm.errors` への auto-merge も効いてない。修正は別タスク
 - **Cookie**: `httpOnly + Secure + SameSite=Lax`、value は session ID (DB lookup)。操作は `lib/session.ts` 経由のみ
 - **Password hash**: Web Crypto PBKDF2-SHA256 (100k iterations)。形式 `pbkdf2$<iter>$<salt-hex>$<hash-hex>`
   - **Argon2id (hash-wasm) は使えない**: Workers が `WebAssembly.compile()` をブロック
@@ -131,14 +132,16 @@ docs/
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Get Current User** ← 次回スタート候補 (spec の `/user` GET 相当)
-   - shared data で既に動いてるけど、spec 通り `/user` endpoint も用意するか要検討
-2. **Update User** (`/user` PUT 相当)
-3. **Profiles** (GET / follow / unfollow)
-4. **Articles** (CRUD + Feed + List)
-5. **Comments**
-6. **Favorites**
-7. **Tags**
+1. **Update User** (`/user` PUT 相当)
+2. **Profiles** (GET / follow / unfollow)
+3. **Articles** (CRUD + Feed + List)
+4. **Comments**
+5. **Favorites**
+6. **Tags**
+
+### 判断記録
+
+- **Get Current User (`/user` GET) は作らない** (2026-05-04): shared data で全 page に `auth.user` 届いてるので「ページ全体にバンってユーザ情報欲しい場面」が今ない。代替手段 (`useAuth()`) で取れる、ただそれだけ。必要になったら追加する。
 
 その後 (大物):
 

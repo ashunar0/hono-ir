@@ -14,6 +14,8 @@ export default function Home({ message }: PageProps<"Home">) {
           <>
             <span>Logged in as {user.username}</span>
             {" | "}
+            <Link href="/articles/new">New article</Link>
+            {" | "}
             <button type="button" onClick={() => router.post("/logout")}>
               Logout
             </button>

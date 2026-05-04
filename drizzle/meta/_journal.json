@@ -15,6 +15,13 @@
       "when": 1777797810223,
       "tag": "0001_melodic_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777886351030,
+      "tag": "0002_odd_sunspot",
+      "breakpoints": true
     }
   ]
 }
