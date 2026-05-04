@@ -84,26 +84,43 @@ share: async (c) => ({
 
 ## Flash の位置付け
 
-Flash は shared data の上に乗る **app-specific な慣習**。adapter には実装しない。
-hono-ir では:
+Flash は shared data の上に乗る **app-specific な慣習**。adapter には実装しない（Laravel-Inertia 同様）。
+hono-ir では cookie 方式で実装:
 
-- `sessions` テーブルに `flash_data TEXT` カラム追加 (migration)
-- `setFlash(c, key, value)` / `consumeFlash(c)` helper を user-land で実装
+- `lib/flash.ts`: `setFlash(c, flash)` / `consumeFlash(c)` helper (Context-only な pure helper)
+- 1 本の HttpOnly cookie に JSON で `{ success?, error? }` を乗せる
 - `share` の closure で `consumeFlash(c)` を呼ぶ
+- client 側は `app/lib/use-flash.ts` の `useFlash()` hook + `app/components/FlashMessages.tsx`
+
+### DB 方式を却下した理由 (設計議論メモ)
+
+最初は `sessions.flash_data TEXT` カラム追加で実装しようとしたが、以下で詰まった：
+
+- **新規発行 session に flash 書けない**: signup の流れ「user 作成 → session 作成 → cookie set → redirect」の中で setFlash を呼びたいが、cookie はまだ request に乗ってないので `getSessionCookie(c)` で session ID が取れない
+- 解決策の検討:
+  - 案 C: `setFlash(c, sessionId, flash)` のように sessionId を明示渡し → API 非対称、呼び側が毎回悩む
+  - 案 A-lite: session loader middleware で c.var.session を埋める → 業界 standard だが infra コスト高
+  - 案 B (採用): cookie-based flash → session 不要、DX 最も simple
+
+cookie 方式は session の存在を気にせず常に同じシグネチャで呼べる。Rails / Laravel の DB session も結局「リクエスト単位の in-memory session object」を作って解決してるが、hono-ir でその infra を作るのは過剰。
+
+### 同一リクエスト内 merge
+
+cookie 方式の制約：同一リクエストで `setFlash` を 2 回呼ぶと最後勝ち（Set-Cookie が上書きされるため）。`c.var` で pending flash を貯める実装にすればマージ可能だが、実用上 setFlash を 1 リクエストで複数回呼ぶ場面が無いため未対応。必要になったら拡張。
 
 ## ロードマップ
 
 ```
-Phase 1: hono-ir で user-land 実装 (PoC)         ← 次セッションここから
+Phase 1: hono-ir で user-land 実装 (PoC)         ✅ 完了
   └─ src/lib/inertia-share.ts (sharedData helper)
-  └─ Get Current User と組み合わせて動作確認
+  └─ useAuth() hook で動作確認
 
-Phase 2: Flash を hono-ir で実装
-  └─ migration: sessions.flash_data
-  └─ setFlash / consumeFlash helper
-  └─ Layout コンポーネントで toast 表示
+Phase 2: Flash を hono-ir で実装                 ✅ 完了 (cookie 方式採用)
+  └─ src/lib/flash.ts: setFlash / consumeFlash (cookie 1 本に JSON)
+  └─ app/components/FlashMessages.tsx: success / error の color-coded 表示
+  └─ signup / login / logout で setFlash 呼び出し済み
 
-Phase 3: 動いた shared data 部分を @hono/inertia へ切り出し
+Phase 3: 動いた shared data 部分を @hono/inertia へ切り出し  ← 次の大物
   └─ honojs/middleware に issue 立てて方向性確認
   └─ PR: shared data + closures (テスト + README 更新)
   └─ Flash は app-side のままにする (adapter には入れない)
