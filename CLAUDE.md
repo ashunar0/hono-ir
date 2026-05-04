@@ -51,9 +51,11 @@ src/
       view.ts          # ArticleView 型 + toArticleView (Date ISO 化 + author 機密 field 除外)
     profiles/          # プロフィール feature
       index.ts         # Hono sub-app (basePath で /profiles/:username 配下にまとめる)
-      repository.ts    # followRepo (exists / create / delete)
-      service.ts       # getProfile / followUser / unfollowUser
+      service.ts       # getProfile / followUser / unfollowUser (follows feature を利用)
       view.ts          # ProfileView 型 + toProfileView (isFollowing / isSelf flag)
+    follows/           # フォロー関係 feature (users 間の関係モデル)
+      repository.ts    # followRepo (exists / create / delete)
+      service.ts       # resolveIsFollowing(db, viewerId, targetId) — viewer 文脈の follow 判定共通 helper
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -150,6 +152,7 @@ docs/
 - [x] **Articles 基本 CRUD**: schema (`articles` テーブル + migration 0002) + Create (`POST /articles` + `GET /articles/new` form) + Show (`GET /articles/:slug`) + Update (`PUT /articles/:slug` + `GET /articles/:slug/edit` form) + Delete (`DELETE /articles/:slug`)。slug は title slugify + `Date.now().toString(36)` suffix で不変、validators flat、Show は author + `isAuthor` flag、Edit/Delete buttons は author のみ表示
 - [x] **Inertia 流 redirect-back errors (Phase 2.5)**: `lib/inertia-helpers.ts` で `c.back({ errors })` middleware を user-land 注入。validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一。dev mode の plain JSON overlay 解消、`useForm.errors` 自動マージが効く。Phase 3 PR で adapter に取り込む API 形を先取り
 - [x] **Profiles**: schema (`follows` テーブル + migration 0003) + GET / follow / unfollow。`basePath("/profiles/:username")` 採用、self-follow は service 層 (`cannot_follow_yourself` + `c.back` で flash error) と DB CHECK 制約で二重防止。Profile page は最小実装 (username + bio + image + Follow/Unfollow ボタン、自分なら "This is your profile."、未ログイン閲覧可)
+- [x] **follows feature 独立**: `features/follows/` に切り出し。`resolveIsFollowing(db, viewerId, targetId)` を共通 helper として、profile / article (将来) で再利用可能に
 
 ### 残タスク (RealWorld spec 順)
 
@@ -177,7 +180,7 @@ docs/
 - **errors の保管場所は当面 cookie 1 本同居** (2026-05-04): `Flash = { success?, error?, errors? }` で flash cookie 1 本に同居 (A 方式)。adapter 化時に責務分離したくなったら別 cookie or session 別キーに寄せる候補だが、Workers の session 機構自体の見直しと一緒に判断する話。Articles など機能完成後、別軸で着手。Rails/Laravel は **session 内別キー** が標準だが、hono-ir は session を auth 用にしか使ってないので cookie 直書きの今で十分
 - **profiles は basePath で route prefix をまとめる** (2026-05-04): 全 route が `/profiles/:username` 配下で揃ってるので `.basePath("/profiles/:username")` で集約。明示性は冒頭の basePath 行が見えるので落ちず、むしろ「この feature は :username scope」という構造が伝わる。articles のように `/articles/new` `/articles/:slug` が混在する feature では使わない (basePath が嘘になる)
 - **self-follow は二重防止** (2026-05-04): service 層で `viewerId === target.id` を弾いて `cannot_follow_yourself` → `c.back` で flash error。DB 側も `CHECK (follower_id != following_id)` 制約。UI からは isSelf チェックで Follow ボタン非表示なので通常到達不可、URL 直叩きや外部 client 防止のため二重で守る
-- **Profile の followRepo は profile feature 内に置く** (2026-05-04): `users` feature の repo に follow methods を集約する案もあったが、follows という関係は profile 文脈で完結するので `features/profiles/repository.ts` に置く。articles list の author filter 等で広く使う必要が出たら独立 feature 化を検討
+- **follows は独立 feature** (2026-05-04 訂正): 当初 `features/profiles/repository.ts` に followRepo を置いていたが、article の author 表示でも同じ isFollowing 判定が必要になることを見越して `features/follows/` に切り出し。`resolveIsFollowing(db, viewerId, targetId)` を service helper として export、profile / article 両方が import する。依存方向は `profiles → follows + users`、将来 `articles → follows + users`。判断記録の「広く使う必要が出たら独立 feature 化」のトリガーが立ったタイミングで切り出した
 - **Profile 最小実装で記事一覧は後回し** (2026-05-04): RealWorld spec の Profile page には自分の記事一覧があるが、List feature 未実装なので最小実装 (username + bio + image + Follow/Unfollow) のみ。List 実装後に partial reload で組み込む
 
 その後 (大物):
@@ -191,17 +194,19 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `a3f76a6 feat(profiles): プロフィール表示と follow/unfollow を実装` (この後 docs commit が乗る予定)
-- typecheck / build / Playwright 動作確認 全 OK (Profile 表示 / Follow / Unfollow / 404 / self-follow 二重防止)
-- ローカル D1: user (`asahi`, `errortest`, `follower`)。`follower` → `errortest` のフォロー関係はテスト中に作成 → 解除済み (現在 follows テーブル空想定)
+- main: `7800a6c refactor(follows): follow feature を独立させ isFollowing 判定を共通化` (この後 docs commit が乗る予定)
+- typecheck / build / Playwright 動作確認 全 OK (Profile 表示 / Follow / Unfollow / 404 / self-follow 二重防止)、follows 独立後も curl で lifecycle 再確認済み
+- ローカル D1: user (`asahi`, `errortest`, `follower`)。`follower` → `errortest` のフォロー関係は curl テスト後 follow 状態 (true) で残ってる
 - dev server は止めた
 
 ### 今日 (2026-05-04 続き) やったこと
 
-選択肢 A (validation error bug) と B (Profiles) を片付け。2 commits：
+選択肢 A (validation error bug) と B (Profiles) を片付け、follows を独立 feature に切り出し。4 commits：
 
 - `cedde84` feat(auth): validation errors を Inertia 流の redirect-back で表示
 - `a3f76a6` feat(profiles): プロフィール表示と follow/unfollow を実装
+- `805891a` chore(profiles): フォロー通知の flash 文言を整える
+- `7800a6c` refactor(follows): follow feature を独立させ isFollowing 判定を共通化
 
 ポイント (validation errors):
 - `lib/inertia-helpers.ts` 新設、`c.back({ errors, flash, fallback? })` を Context に user-land 注入 (middleware + module augmentation)
@@ -211,9 +216,14 @@ docs/
 
 ポイント (profiles):
 - schema: `follows` テーブル (複合 PK + CHECK no_self_follow)、createdAt 省略 (YAGNI)
-- features/profiles/: repository / service / view / index の 4 ファイル
+- 当初は `features/profiles/repository.ts` に followRepo を置いて実装、その後 article でも author の follow 判定が要るのを見越して `features/follows/` に独立切り出し
 - index.ts は `.basePath("/profiles/:username")` で 3 routes (`/`, `/follow`, `/follow` DELETE) をまとめる
 - Profile page は最小実装、記事一覧は List 実装後
+
+ポイント (follows 独立):
+- `resolveIsFollowing(db, viewerId, targetId): Promise<boolean>` を共通 helper として export
+- 未ログイン (viewerId undefined) や自分自身 (viewerId === targetId) の場合は常に false
+- 依存方向: `profiles → follows + users`、将来 `articles → follows + users`
 
 ### 直前の議論で決まったこと
 
@@ -222,7 +232,7 @@ docs/
 - **保管場所は cookie 1 本に同居 (A 方式) で当面維持**: Workers の session 機構の見直しと一緒に判断
 - **profiles は basePath 採用**: 全 route が `/profiles/:username` 配下なので集約。articles のように混在 feature では使わない (basePath が嘘になる)
 - **self-follow は二重防止**: service (`cannot_follow_yourself` + `c.back`) と DB CHECK 制約。UI 側は `isSelf` で Follow ボタン非表示
-- **followRepo は profile feature 内**: users feature の repo に集約する案もあったが、follows は profile 文脈で完結するので feature 内
+- **follows は独立 feature に切り出し**: 当初 profile feature 内に followRepo を置いたが、article 側でも author 表示で同じ isFollowing 判定が要ることを見越して `features/follows/` に切り出し。`resolveIsFollowing` を共通 helper 化。判断記録の「広く使う必要が出たら独立 feature 化」のトリガーに合致
 - **Profile 最小実装で記事一覧は後回し**: List 実装後に partial reload で組み込む
 
 ### 次セッション最初の一手
