@@ -2,8 +2,7 @@ import { inertia } from "@hono/inertia";
 import { Hono } from "hono";
 import { createDb } from "./db/client";
 import users from "./features/users";
-import { userRepo } from "./features/users/repository";
-import type { AuthUser } from "./lib/auth-user";
+import { resolveAuthUser } from "./features/users/service";
 import { sharedData } from "./lib/inertia-share";
 import { loadAuth, type OptionalAuthVariables } from "./middleware/auth";
 import { rootView } from "./root-view";
@@ -20,24 +19,9 @@ app.use(loadAuth);
 app.use(
   sharedData<Env>((c) => ({
     // closure: partial reload で auth を要求されない時は DB 引かない
-    auth: async (): Promise<{ user: AuthUser | null }> => {
-      const userId = c.var.userId;
-      if (!userId) return { user: null };
-
-      const user = await userRepo(createDb(c.env.DB)).findById(userId);
-      if (!user) return { user: null };
-
-      // password hash や timestamps は出さない
-      return {
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          bio: user.bio,
-          image: user.image,
-        },
-      };
-    },
+    auth: async () => ({
+      user: await resolveAuthUser(createDb(c.env.DB), c.var.userId),
+    }),
   })),
 );
 

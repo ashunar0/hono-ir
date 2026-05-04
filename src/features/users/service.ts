@@ -1,4 +1,5 @@
 import type { Db } from "../../db/client";
+import type { AuthUser } from "../../lib/auth-user";
 import { sessionRepo, type SessionRepo, userRepo } from "./repository";
 import type { CreateUserRequest, LoginUserRequest } from "./validators";
 
@@ -135,6 +136,24 @@ export async function signupUser(db: Db, input: CreateUserRequest) {
 // session 削除のみ。失敗概念なし（best-effort）
 export async function logoutUser(db: Db, sessionId: string) {
   await sessionRepo(db).delete(sessionId);
+}
+
+// 現在のログインユーザーを解決。shared data 等で使う。
+// userId が無い (未ログイン) または DB に居ない場合は null
+export async function resolveAuthUser(
+  db: Db,
+  userId: number | undefined,
+): Promise<AuthUser | null> {
+  if (!userId) return null;
+  const user = await userRepo(db).findById(userId);
+  if (!user) return null;
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    bio: user.bio,
+    image: user.image,
+  };
 }
 
 // ログインの orchestration。
