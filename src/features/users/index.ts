@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createDb } from "../../db/client";
-import { authMiddleware } from "../../middleware/auth";
+import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { loginUser, logoutUser, signupUser } from "./service";
 import { createUserSchema, loginUserSchema } from "./validators";
@@ -76,7 +76,7 @@ const app = new Hono<Env>()
     return c.redirect("/", 303);
   })
   // ログアウト
-  .post("/logout", authMiddleware, async (c) => {
+  .post("/logout", requireAuth, async (c) => {
     const sessionId = getCookie(c, SESSION_COOKIE);
 
     if (sessionId) {

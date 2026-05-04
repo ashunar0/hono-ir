@@ -5,10 +5,7 @@ import users from "./features/users";
 import { userRepo } from "./features/users/repository";
 import type { AuthUser } from "./lib/auth-user";
 import { sharedData } from "./lib/inertia-share";
-import {
-  type OptionalAuthVariables,
-  optionalAuthMiddleware,
-} from "./middleware/auth";
+import { loadAuth, type OptionalAuthVariables } from "./middleware/auth";
 import { rootView } from "./root-view";
 
 type Env = {
@@ -19,7 +16,7 @@ type Env = {
 const app = new Hono<Env>();
 
 app.use(inertia({ rootView }));
-app.use(optionalAuthMiddleware);
+app.use(loadAuth);
 app.use(
   sharedData<Env>((c) => ({
     // closure: partial reload で auth を要求されない時は DB 引かない
