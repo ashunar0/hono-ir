@@ -55,10 +55,12 @@ src/
   lib/
     auth-user.ts       # AuthUser 型 (server / client 共有)
     flash.ts           # cookie ベースの setFlash / consumeFlash (Context-only、session 不要)
+    inertia-errors.ts  # zod error → Inertia useForm.errors 形式の Record<string,string> 変換
+    inertia-helpers.ts # c.back middleware (Inertia 流 redirect-back、Phase 3 PR 先取り)
     inertia-share.ts   # sharedData middleware (自前実装、@hono/inertia への PR 候補)
     password.ts        # hashPassword / verifyPassword (PBKDF2)
     session.ts         # cookie I/O + generateSessionId + SESSION_TTL_MS
-  server.ts            # 配線 (inertia + loadAuth + sharedData + share 関数定義、flash も share)
+  server.ts            # 配線 (inertia + inertiaHelpers + loadAuth + sharedData + share 関数)
   client.tsx           # Inertia client
   root-view.tsx        # HTML root
 
@@ -90,16 +92,17 @@ docs/
 - **Service 戻り値**: tagged union `{ kind: "ok" | "..." }`、`as const` で literal 保持。`Promise<...>` 型注釈は推論に任せる
 - **lib/ は feature-agnostic**: feature を import しない。pure / Context-only な helper のみ置く
 - **命名は役割で**: middleware/関数名は責務を動詞で表す (例: `requireAuth` / `loadAuth`)。`required`/`optional` のような設定形容詞は使わない
-- **Validation エラー**: `c.json({ errors }, 422)` で返す
+- **Validation エラー**: `c.back({ errors })` で referer に 303 redirect (Inertia 流 redirect-back)
   - エラー key は form field 名 (例: `email`)。form-level エラーは `credentials` 等で運用も可
   - `c.render(SAME_PAGE, { values, errors })` の SSR スタイル再描画は **使わない** (CSR 文脈で redundant)
-  - **既知 bug**: `@hono/inertia` 0.1.0 では 422 response が Inertia format として認識されず、dev mode で plain JSON overlay が出て `useForm.errors` への auto-merge も効いてない。修正は別タスク
+  - 旧 `c.json({ errors }, 422)` は Inertia format として認識されず dev overlay が出ていた → `c.back` 採用で解消、`useForm.errors` への自動マージが効く
+  - 業務エラー (重複 email など) も同パターン。`c.back({ errors: { email: "..." } })`
 - **Cookie**: `httpOnly + Secure + SameSite=Lax`、value は session ID (DB lookup)。操作は `lib/session.ts` 経由のみ
 - **Password hash**: Web Crypto PBKDF2-SHA256 (100k iterations)。形式 `pbkdf2$<iter>$<salt-hex>$<hash-hex>`
   - **Argon2id (hash-wasm) は使えない**: Workers が `WebAssembly.compile()` をブロック
 - **Page 型**: `PageProps<"...">` の自動推論は複数 `c.render` の union で壊れがち → feature から `import type { ... }` する。`useForm` 自前初期化なら page props 不要にできる
-- **Shared data**: middleware が runtime で `auth.user` / `flash` 等を全 page response に注入。page props 型からは見えないため、client 側は `useAuth()` / `useFlash()` 等のカスタム hook で型付きアクセス
-- **Flash**: cookie ベース (DB ではない)。`{ success?, error? }` の固定 key 型。同一リクエスト内 merge 非対応 (実用上不要)。詳細は `docs/inertia-share-design.md`
+- **Shared data**: middleware が runtime で `auth.user` / `flash` / `errors` 等を全 page response に注入。page props 型からは見えないため、client 側は `useAuth()` / `useFlash()` 等のカスタム hook で型付きアクセス。`errors` は Inertia core 規約名なので shared data の **トップレベルキー** で出す (`useForm.errors` が読み取る)
+- **Flash**: cookie ベース (DB ではない)。`{ success?, error?, errors? }` 固定 key 型。`errors` は form field-level エラー (`c.back` 経由で積まれる)、`success` / `error` は通知メッセージ。同一リクエスト内 merge 非対応 (実用上不要)。詳細は `docs/inertia-share-design.md`
 
 ## ハマりポイント
 
@@ -139,20 +142,20 @@ docs/
 - [x] **session feature 分離**: `features/session/` (repository + service)。auth は session を利用する側、業界 standard と揃う
 - [x] **Flash 機構 (Phase 2)**: cookie 方式で実装。signup / login / logout で setFlash 呼び出し済み
 - [x] **Articles 基本 CRUD**: schema (`articles` テーブル + migration 0002) + Create (`POST /articles` + `GET /articles/new` form) + Show (`GET /articles/:slug`) + Update (`PUT /articles/:slug` + `GET /articles/:slug/edit` form) + Delete (`DELETE /articles/:slug`)。slug は title slugify + `Date.now().toString(36)` suffix で不変、validators flat、Show は author + `isAuthor` flag、Edit/Delete buttons は author のみ表示
+- [x] **Inertia 流 redirect-back errors (Phase 2.5)**: `lib/inertia-helpers.ts` で `c.back({ errors })` middleware を user-land 注入。validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一。dev mode の plain JSON overlay 解消、`useForm.errors` 自動マージが効く。Phase 3 PR で adapter に取り込む API 形を先取り
 
 ### 残タスク (RealWorld spec 順)
 
-1. **[要修正] Inertia validation error 表示**: `c.json({ errors }, 422)` が Inertia format として認識されず、dev mode で plain JSON overlay。`useForm.errors` への auto-merge も効いてない。signup / login / article 全 form 共通の既存 bug
-2. **Update User** (`/user` PUT 相当)
-3. **Profiles** (GET / follow / unfollow)
-4. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
-5. **Comments**
-6. **Favorites**
-7. **Tags**
+1. **Update User** (`/user` PUT 相当)
+2. **Profiles** (GET / follow / unfollow)
+3. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
+4. **Comments**
+5. **Favorites**
+6. **Tags**
 
 ### リファクタ候補
 
-- **forbidden / not_found ヘルパー化**: 現在 inline で `setFlash(c, { error }) + c.redirect(...)` が article routes 3 箇所で重複。List/Feed/Comments で更に増えてきたら `lib/responses.ts` に `flashRedirect(c, kind, message, to)` 等を切り出す
+- **articles の forbidden / not_found を c.back 化**: 現在 inline で `setFlash(c, { error }) + c.redirect(...)` が article routes 3 箇所で重複。`c.back({ flash: { error: "..." } })` で 1 行化できる (referer に戻るなら一番素直)。明示 URL に戻したい場合は別 helper か c.redirect 維持
 - **404 page を Inertia 流に**: 現状 `c.notFound()` のデフォルト plain text。`app.notFound((c) => c.render("Errors/NotFound", {}))` で page 化
 
 ### 判断記録
@@ -162,55 +165,55 @@ docs/
 - **Article validation は flat** (2026-05-04): RealWorld spec のネスト形式 `{ article: {...} }` ではなく flat に統一。auth feature が既に flat だったので consistency 優先 + Inertia `useForm` との相性も良い
 - **Article view layer は feature 内に切り出し** (2026-05-04): Inertia でも整形 (Date → ISO / 機密 field 除外) は必要。当初「軽量だから inline」と判断したが route が長くなったので `features/articles/view.ts` に集約。前回 (Hono-only) の `presenter.ts` の Inertia 版に相当。Show.tsx も `ArticleView` 型を import して props 型を共有
 - **Article slug は不変** (2026-05-04): Update で title が変わっても slug は再生成しない。URL 安定 (履歴 / SEO / 外部 link)、Twitter / GitHub 等と同じ流派
-- **forbidden / not_found の inline は維持** (2026-05-04): Update / Delete / Edit form の 3 箇所で `setFlash(c, { error }) + c.redirect(...)` が重複しているが、3 箇所で困ってないので YAGNI 維持。List / Feed 等で更に重複が増えたら `lib/responses.ts` ヘルパー切り出しを検討する (リファクタ候補として残す)
+- **forbidden / not_found の inline は維持** (2026-05-04): Update / Delete / Edit form の 3 箇所で `setFlash(c, { error }) + c.redirect(...)` が重複しているが、3 箇所で困ってないので YAGNI 維持。List / Feed 等で更に重複が増えたら `c.back({ flash: { error } })` への置き換えを検討 (リファクタ候補として残す)
+- **Validation errors は Inertia 流 redirect-back** (2026-05-04): `c.json({errors}, 422)` で直接 JSON を返すと `@hono/inertia` 0.1.0 が Inertia format として認識せず dev overlay。Laravel/Rails-Inertia と同じく **errors を flash に積んで referer に redirect**、次のリクエストで shared data の `errors` キー経由で `useForm.errors` に届く方式を採用。`useForm.errors` が読むキー名は **Inertia core (client) の規約 = トップレベル `errors`** で固定 (動かせない)。adapter のお節介機能は (1) errors の自動収集 (2) `c.back` 風 1 行 helper の 2 つ。
+- **c.back middleware を user-land 先取り** (2026-05-04): `lib/inertia-helpers.ts` で middleware が `c.back({ errors, flash, fallback? })` を Context に注入 (module augmentation で型も生やす)。中身は `setFlash + referer (or fallback) に 303 redirect`。Phase 3 で adapter に取り込んだ後は middleware を抜くだけで route 側は無変更で済む。関数 import 形式 (`back(c, ...)`) ではなく `c.xxx()` メソッド形式にしたのは Hono 流派 (`c.json` `c.notFound` の隣に並ぶ) に揃えるため
+- **errors の保管場所は当面 cookie 1 本同居** (2026-05-04): `Flash = { success?, error?, errors? }` で flash cookie 1 本に同居 (A 方式)。adapter 化時に責務分離したくなったら別 cookie or session 別キーに寄せる候補だが、Workers の session 機構自体の見直しと一緒に判断する話。Articles など機能完成後、別軸で着手。Rails/Laravel は **session 内別キー** が標準だが、hono-ir は session を auth 用にしか使ってないので cookie 直書きの今で十分
 
 その後 (大物):
 
-- **Phase 3**: 自前 `inertia-share.ts` を切り出して `@hono/inertia` 本体への PR
+- **Phase 3**: 自前 `inertia-share.ts` + `inertia-helpers.ts` を切り出して `@hono/inertia` 本体への PR
   - 詳細は `docs/inertia-share-design.md` 参照
+  - 範囲: shared data 機構 + errors 自動配信 + `c.back / c.redirectInertia` 風 1 行 helper
   - issue 立て → 設計合意 → テスト + README → PR
-  - flash は app-side のままにする (Laravel-Inertia 同様、adapter には入れない)
+  - flash 通知 (success / error) は app-side のままにする (Laravel-Inertia 同様、adapter には入れない)
 
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `2cf0c6b feat(articles): 編集と削除を実装` (この後 docs commit が乗る予定)
-- typecheck / build / Playwright 動作確認 全 OK
-- ローカル D1: signup 済み user (`asahi`) のみ。記事は今日のテストで Update 経由で残ってないはず (Delete してから新規作成 → 削除しない場合あり、要確認)
+- main: `cedde84 feat(auth): validation errors を Inertia 流の redirect-back で表示` (この後 docs commit が乗る予定)
+- typecheck / build / Playwright 動作確認 全 OK (signup 空 submit / 重複 email / invalid credentials / 正常 login の 4 ケース)
+- ローカル D1: signup 済み user (`asahi`, `errortest`)。記事は残ってない想定
 - dev server は止めた
 
 ### 今日 (2026-05-04 続き) やったこと
 
-Articles 基本 CRUD の完成。3 commits：
+既知 bug「Inertia validation error 表示」を解消。次セッション選択肢 A の片付け。1 commit：
 
-1. `fa4aea7` feat(articles): 新規作成と表示の最小実装
-2. `06e7525` refactor(articles): view layer を切り出して route の整形を集約
-3. `2cf0c6b` feat(articles): 編集と削除を実装
+- `cedde84` feat(auth): validation errors を Inertia 流の redirect-back で表示
 
-`fa4aea7` 実装時は Show route 内に整形 inline していたが、あさひさんの「これは整形してるからか？」観察を受けて `view.ts` に切り出し (`06e7525`)。判断記録の「presenter 不要」は実態と乖離してたので訂正。
-
-`2cf0c6b` で Update/Delete を実装。author 認可 + Edit/Delete buttons (author only) + window.confirm で削除確認。
+ポイント:
+- `lib/inertia-helpers.ts` 新設、`c.back({ errors, flash, fallback? })` を Context に user-land 注入 (middleware + module augmentation)
+- validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一
+- shared data の `errors` キーは Inertia core (client) の規約名なのでトップレベルで配信、`useForm.errors` 自動マージが効く
+- Phase 3 PR で adapter に取り込む API 形 (`c.back`) を user-land で先取り → 移行コスト 0 を狙う
 
 ### 直前の議論で決まったこと
 
-- **前回設計の見返り**: Schema / slug / repository / service tagged union は前回の Hono-only 実装そのまま。「presenter と切り離した 3 層」が分離設計の効果を発揮、UI 層 (REST → Inertia) の差し替えだけで済んだ
-- **Inertia 化で変わるところ**: route は `c.render` で page 直描画、Create / Update 成功時は Rails 流の `c.redirect` + flash
-- **Validation は flat、URL は Rails resourceful 流**: `/articles/new` `/articles/:slug/edit`、`POST/PUT/DELETE /articles/:slug`
-- **Service signature は `(db, ...args, input)`**: articles は `(db, slug, viewerId, input)` 等、auth context を独立引数として受け取る
-- **既知 bug**: `c.json({ errors }, 422)` が Inertia として認識されず dev overlay。修正は別タスク
-- **`c.notFound()` 採用**: Hono 組み込み API。前回 (REST) は形式統一のため `c.json({ errors }, 404)` 使ってた。今回は Inertia なので組み込み plain 404 で済ます (page 化はリファクタ候補)
-- **isAuthor は server で判定**: ArticleView に `author.id` を漏らさないため、Show route で `c.var.userId === article.authorId` を計算して props に注入
-- **forbidden / not_found の inline は維持**: 3 箇所重複してるが今は困ってない、List/Feed 後に再検討
-- **subapp Env に `Variables: { userId?: number }`**: Show が optional auth で userId 使うため。requireAuth 後の route では middleware の型 merge で number に narrow される
+- **Inertia 流 redirect-back 採用**: `c.json({errors}, 422)` 直返しは `@hono/inertia` 0.1.0 が Inertia format として認識せず dev overlay。Laravel/Rails-Inertia と同じく **errors を flash に積んで referer に redirect**、次リクエストで shared data の `errors` キー経由で `useForm.errors` に届く形に
+- **`errors` キーは Inertia core 規約、`flash` は慣習**: `useForm.errors` が読むのは shared data のトップレベル `errors` (固定)。`flash` は Laravel/Rails での慣習で開発者命名。adapter のお節介機能は (1) errors 自動収集 (2) `c.back` 風 helper の 2 つ
+- **`c.back` API を user-land 先取り**: Hono 流派 (`c.json` `c.notFound` の隣) に揃えて `c.xxx()` メソッド形式。関数 import 形式 (`back(c, ...)`) は不採用。Phase 3 の PR で adapter 化したら middleware を抜くだけで route 側は無変更
+- **保管場所は cookie 1 本に同居 (A 方式) で当面維持**: Rails/Laravel は session 内別キーが標準だが、hono-ir は session を auth 用にしか使ってない。Workers の session 機構自体の見直しと一緒に判断する話なので別軸で保留
+- **Articles の forbidden / not_found inline は引き続き維持**: 3 箇所重複だが c.back に書き換える価値は薄い (referer に戻すか明示 URL に戻すかで意図が違う)。リファクタ候補として残す
 
 ### 次セッション最初の一手
 
 選択肢：
 
-**A. Inertia validation error 表示の修正** (既存 bug 解消)
-- 影響: signup / login / article 全 form の form-level error 表示
-- 調査: `@hono/inertia` 0.1.0 の 422 response 取り扱い、X-Inertia headers の必要性
-- 修正候補: validator middleware で X-Inertia 系 headers を付与する / errors を flash 経由で redirect-back させる
+**A. Update User** (`/user` PUT 相当)
+- 残タスク #1。auth feature の派生で軽め
+- form: email / username / password (optional) / image / bio
+- validator は `c.back` 化済みなので新 form もそのまま乗る
 
 **B. Profiles** (GET / follow / unfollow)
 - Articles の Feed と List の filter (author) の前提。先に終わらせると Article 全機能が一気に通る
@@ -221,10 +224,11 @@ Articles 基本 CRUD の完成。3 commits：
 - List: filter (author / tag / favorited) + pagination。tag/favorited は別 feature 依存だが author だけなら今すぐ可能
 - Feed: follows 依存 → B が先
 
-**D. Phase 3: upstream PR** (不変)
-- `@hono/inertia` への shared data 機構提案
+**D. Phase 3: upstream PR**
+- `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
+- 今回 `c.back` の user-land 実装ができたので PR の中身が具体的に見えてきた状態
 
-A は本来直すべき bug、B は本筋の前提整備、C は B の後 (or author filter だけなら先行可)、D は外向き。あさひさんに選んでもらう。
+A は軽め、B は本筋の前提整備、C は B の後 (or author filter だけなら先行可)、D は外向き。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
