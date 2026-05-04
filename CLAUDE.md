@@ -49,6 +49,11 @@ src/
       repository.ts    # articleRepo (factory)
       service.ts       # createArticle / getArticleBySlug
       view.ts          # ArticleView 型 + toArticleView (Date ISO 化 + author 機密 field 除外)
+    profiles/          # プロフィール feature
+      index.ts         # Hono sub-app (basePath で /profiles/:username 配下にまとめる)
+      repository.ts    # followRepo (exists / create / delete)
+      service.ts       # getProfile / followUser / unfollowUser
+      view.ts          # ProfileView 型 + toProfileView (isFollowing / isSelf flag)
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -71,6 +76,7 @@ app/
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
     Articles/New.tsx   # 記事新規作成 form (useForm flat)
     Articles/Show.tsx  # 記事表示 (props 型は features/articles/view から import)
+    Profiles/Show.tsx  # プロフィール表示 (Follow/Unfollow ボタン、isSelf 時は "This is your profile.")
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
   lib/
@@ -143,15 +149,15 @@ docs/
 - [x] **Flash 機構 (Phase 2)**: cookie 方式で実装。signup / login / logout で setFlash 呼び出し済み
 - [x] **Articles 基本 CRUD**: schema (`articles` テーブル + migration 0002) + Create (`POST /articles` + `GET /articles/new` form) + Show (`GET /articles/:slug`) + Update (`PUT /articles/:slug` + `GET /articles/:slug/edit` form) + Delete (`DELETE /articles/:slug`)。slug は title slugify + `Date.now().toString(36)` suffix で不変、validators flat、Show は author + `isAuthor` flag、Edit/Delete buttons は author のみ表示
 - [x] **Inertia 流 redirect-back errors (Phase 2.5)**: `lib/inertia-helpers.ts` で `c.back({ errors })` middleware を user-land 注入。validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一。dev mode の plain JSON overlay 解消、`useForm.errors` 自動マージが効く。Phase 3 PR で adapter に取り込む API 形を先取り
+- [x] **Profiles**: schema (`follows` テーブル + migration 0003) + GET / follow / unfollow。`basePath("/profiles/:username")` 採用、self-follow は service 層 (`cannot_follow_yourself` + `c.back` で flash error) と DB CHECK 制約で二重防止。Profile page は最小実装 (username + bio + image + Follow/Unfollow ボタン、自分なら "This is your profile."、未ログイン閲覧可)
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Update User** (`/user` PUT 相当)
-2. **Profiles** (GET / follow / unfollow)
-3. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
-4. **Comments**
-5. **Favorites**
-6. **Tags**
+1. **Update User** (`/user` PUT 相当、bio / image 編集も含む)
+2. **Articles 残機能**: List (filter + pagination) / Feed (follows 依存)
+3. **Comments**
+4. **Favorites**
+5. **Tags**
 
 ### リファクタ候補
 
@@ -169,6 +175,10 @@ docs/
 - **Validation errors は Inertia 流 redirect-back** (2026-05-04): `c.json({errors}, 422)` で直接 JSON を返すと `@hono/inertia` 0.1.0 が Inertia format として認識せず dev overlay。Laravel/Rails-Inertia と同じく **errors を flash に積んで referer に redirect**、次のリクエストで shared data の `errors` キー経由で `useForm.errors` に届く方式を採用。`useForm.errors` が読むキー名は **Inertia core (client) の規約 = トップレベル `errors`** で固定 (動かせない)。adapter のお節介機能は (1) errors の自動収集 (2) `c.back` 風 1 行 helper の 2 つ。
 - **c.back middleware を user-land 先取り** (2026-05-04): `lib/inertia-helpers.ts` で middleware が `c.back({ errors, flash, fallback? })` を Context に注入 (module augmentation で型も生やす)。中身は `setFlash + referer (or fallback) に 303 redirect`。Phase 3 で adapter に取り込んだ後は middleware を抜くだけで route 側は無変更で済む。関数 import 形式 (`back(c, ...)`) ではなく `c.xxx()` メソッド形式にしたのは Hono 流派 (`c.json` `c.notFound` の隣に並ぶ) に揃えるため
 - **errors の保管場所は当面 cookie 1 本同居** (2026-05-04): `Flash = { success?, error?, errors? }` で flash cookie 1 本に同居 (A 方式)。adapter 化時に責務分離したくなったら別 cookie or session 別キーに寄せる候補だが、Workers の session 機構自体の見直しと一緒に判断する話。Articles など機能完成後、別軸で着手。Rails/Laravel は **session 内別キー** が標準だが、hono-ir は session を auth 用にしか使ってないので cookie 直書きの今で十分
+- **profiles は basePath で route prefix をまとめる** (2026-05-04): 全 route が `/profiles/:username` 配下で揃ってるので `.basePath("/profiles/:username")` で集約。明示性は冒頭の basePath 行が見えるので落ちず、むしろ「この feature は :username scope」という構造が伝わる。articles のように `/articles/new` `/articles/:slug` が混在する feature では使わない (basePath が嘘になる)
+- **self-follow は二重防止** (2026-05-04): service 層で `viewerId === target.id` を弾いて `cannot_follow_yourself` → `c.back` で flash error。DB 側も `CHECK (follower_id != following_id)` 制約。UI からは isSelf チェックで Follow ボタン非表示なので通常到達不可、URL 直叩きや外部 client 防止のため二重で守る
+- **Profile の followRepo は profile feature 内に置く** (2026-05-04): `users` feature の repo に follow methods を集約する案もあったが、follows という関係は profile 文脈で完結するので `features/profiles/repository.ts` に置く。articles list の author filter 等で広く使う必要が出たら独立 feature 化を検討
+- **Profile 最小実装で記事一覧は後回し** (2026-05-04): RealWorld spec の Profile page には自分の記事一覧があるが、List feature 未実装なので最小実装 (username + bio + image + Follow/Unfollow) のみ。List 実装後に partial reload で組み込む
 
 その後 (大物):
 
@@ -181,30 +191,39 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `cedde84 feat(auth): validation errors を Inertia 流の redirect-back で表示` (この後 docs commit が乗る予定)
-- typecheck / build / Playwright 動作確認 全 OK (signup 空 submit / 重複 email / invalid credentials / 正常 login の 4 ケース)
-- ローカル D1: signup 済み user (`asahi`, `errortest`)。記事は残ってない想定
+- main: `a3f76a6 feat(profiles): プロフィール表示と follow/unfollow を実装` (この後 docs commit が乗る予定)
+- typecheck / build / Playwright 動作確認 全 OK (Profile 表示 / Follow / Unfollow / 404 / self-follow 二重防止)
+- ローカル D1: user (`asahi`, `errortest`, `follower`)。`follower` → `errortest` のフォロー関係はテスト中に作成 → 解除済み (現在 follows テーブル空想定)
 - dev server は止めた
 
 ### 今日 (2026-05-04 続き) やったこと
 
-既知 bug「Inertia validation error 表示」を解消。次セッション選択肢 A の片付け。1 commit：
+選択肢 A (validation error bug) と B (Profiles) を片付け。2 commits：
 
 - `cedde84` feat(auth): validation errors を Inertia 流の redirect-back で表示
+- `a3f76a6` feat(profiles): プロフィール表示と follow/unfollow を実装
 
-ポイント:
+ポイント (validation errors):
 - `lib/inertia-helpers.ts` 新設、`c.back({ errors, flash, fallback? })` を Context に user-land 注入 (middleware + module augmentation)
 - validator middleware と auth route の業務エラー 4 箇所を `c.back` に統一
 - shared data の `errors` キーは Inertia core (client) の規約名なのでトップレベルで配信、`useForm.errors` 自動マージが効く
 - Phase 3 PR で adapter に取り込む API 形 (`c.back`) を user-land で先取り → 移行コスト 0 を狙う
 
+ポイント (profiles):
+- schema: `follows` テーブル (複合 PK + CHECK no_self_follow)、createdAt 省略 (YAGNI)
+- features/profiles/: repository / service / view / index の 4 ファイル
+- index.ts は `.basePath("/profiles/:username")` で 3 routes (`/`, `/follow`, `/follow` DELETE) をまとめる
+- Profile page は最小実装、記事一覧は List 実装後
+
 ### 直前の議論で決まったこと
 
-- **Inertia 流 redirect-back 採用**: `c.json({errors}, 422)` 直返しは `@hono/inertia` 0.1.0 が Inertia format として認識せず dev overlay。Laravel/Rails-Inertia と同じく **errors を flash に積んで referer に redirect**、次リクエストで shared data の `errors` キー経由で `useForm.errors` に届く形に
-- **`errors` キーは Inertia core 規約、`flash` は慣習**: `useForm.errors` が読むのは shared data のトップレベル `errors` (固定)。`flash` は Laravel/Rails での慣習で開発者命名。adapter のお節介機能は (1) errors 自動収集 (2) `c.back` 風 helper の 2 つ
-- **`c.back` API を user-land 先取り**: Hono 流派 (`c.json` `c.notFound` の隣) に揃えて `c.xxx()` メソッド形式。関数 import 形式 (`back(c, ...)`) は不採用。Phase 3 の PR で adapter 化したら middleware を抜くだけで route 側は無変更
-- **保管場所は cookie 1 本に同居 (A 方式) で当面維持**: Rails/Laravel は session 内別キーが標準だが、hono-ir は session を auth 用にしか使ってない。Workers の session 機構自体の見直しと一緒に判断する話なので別軸で保留
-- **Articles の forbidden / not_found inline は引き続き維持**: 3 箇所重複だが c.back に書き換える価値は薄い (referer に戻すか明示 URL に戻すかで意図が違う)。リファクタ候補として残す
+- **Inertia 流 redirect-back 採用** + **`c.back` を user-land 先取り**: 既知 bug 解消、Phase 3 PR の API 形先取り
+- **`errors` キーは Inertia core 規約、`flash` は慣習**: adapter のお節介機能は (1) errors 自動収集 (2) `c.back` 風 helper の 2 つ
+- **保管場所は cookie 1 本に同居 (A 方式) で当面維持**: Workers の session 機構の見直しと一緒に判断
+- **profiles は basePath 採用**: 全 route が `/profiles/:username` 配下なので集約。articles のように混在 feature では使わない (basePath が嘘になる)
+- **self-follow は二重防止**: service (`cannot_follow_yourself` + `c.back`) と DB CHECK 制約。UI 側は `isSelf` で Follow ボタン非表示
+- **followRepo は profile feature 内**: users feature の repo に集約する案もあったが、follows は profile 文脈で完結するので feature 内
+- **Profile 最小実装で記事一覧は後回し**: List 実装後に partial reload で組み込む
 
 ### 次セッション最初の一手
 
@@ -214,21 +233,19 @@ docs/
 - 残タスク #1。auth feature の派生で軽め
 - form: email / username / password (optional) / image / bio
 - validator は `c.back` 化済みなので新 form もそのまま乗る
+- Profile の bio / image が空のままなので、入れたら Profile が見栄え変わる
 
-**B. Profiles** (GET / follow / unfollow)
-- Articles の Feed と List の filter (author) の前提。先に終わらせると Article 全機能が一気に通る
-- self-follow 防止: 前回は CHECK 制約 (`follower_id != following_id`) だったが D1 で動くか要確認
-- Profile page (`/@:username` or `/profiles/:username`) で自分の記事一覧 (要 List 部分実装)
+**B. Article 残機能 (List + Feed)**
+- List: filter (author / tag / favorited) + pagination。tag/favorited は別 feature 依存だが author / 自分の Feed (follows ベース) は今すぐ可能
+- Feed: follows feature 完成済みなので即実装可
+- 完成すると Profile page に「自分の記事一覧」を partial reload で組み込める (Profile の完全形)
 
-**C. Article 残機能 (List + Feed)**
-- List: filter (author / tag / favorited) + pagination。tag/favorited は別 feature 依存だが author だけなら今すぐ可能
-- Feed: follows 依存 → B が先
-
-**D. Phase 3: upstream PR**
+**C. Phase 3: upstream PR**
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
-- 今回 `c.back` の user-land 実装ができたので PR の中身が具体的に見えてきた状態
+- 今回の Phase 2.5 で API 形が固まった、Profile feature の動作確認も終わったので PR の中身が具体化
+- ただし保管場所 (cookie 1 本同居 vs 別 cookie) の議論が PR 設計時に再浮上、session 設計と一緒に詰める方針
 
-A は軽め、B は本筋の前提整備、C は B の後 (or author filter だけなら先行可)、D は外向き。あさひさんに選んでもらう。
+A は軽くて Profile を見栄え良くする副次効果あり、B は List/Feed という本丸、C は外向きで今までの集大成。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
