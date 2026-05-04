@@ -129,19 +129,24 @@ docs/
 - [x] **auth feature 分離**: `features/auth/` 独立、`features/users/` は profile 機能の土台
 - [x] **session feature 分離**: `features/session/` (repository + service)。auth は session を利用する側、業界 standard と揃う
 - [x] **Flash 機構 (Phase 2)**: cookie 方式で実装。signup / login / logout で setFlash 呼び出し済み
+- [x] **Articles (部分)**: schema (`articles` テーブル + migration 0002) + 新規作成 (`POST /articles` + `GET /articles/new` form) + 表示 (`GET /articles/:slug`)。slug は title slugify + `Date.now().toString(36)` suffix、validators flat、Show は author 込みで render。Home から「New article」link
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Update User** (`/user` PUT 相当)
-2. **Profiles** (GET / follow / unfollow)
-3. **Articles** (CRUD + Feed + List)
-4. **Comments**
-5. **Favorites**
-6. **Tags**
+1. **[要修正] Inertia validation error 表示**: `c.json({ errors }, 422)` が Inertia format として認識されず、dev mode で plain JSON overlay。`useForm.errors` への auto-merge も効いてない。signup / login / article 全 form 共通の既存 bug
+2. **Update User** (`/user` PUT 相当)
+3. **Profiles** (GET / follow / unfollow)
+4. **Articles 残機能**: Update / Delete (author 認可必要) / List (filter + pagination) / Feed (follows 依存)
+5. **Comments**
+6. **Favorites**
+7. **Tags**
 
 ### 判断記録
 
 - **Get Current User (`/user` GET) は作らない** (2026-05-04): shared data で全 page に `auth.user` 届いてるので「ページ全体にバンってユーザ情報欲しい場面」が今ない。代替手段 (`useAuth()`) で取れる、ただそれだけ。必要になったら追加する。
+- **Article slug は前回踏襲** (2026-05-04): `slugify(title) + "-" + Date.now().toString(36)`。衝突回避は timestamp 任せ。個人開発レベルで十分、厳密にやるなら nanoid 等
+- **Article validation は flat** (2026-05-04): RealWorld spec のネスト形式 `{ article: {...} }` ではなく flat に統一。auth feature が既に flat だったので consistency 優先 + Inertia `useForm` との相性も良い
+- **Article presenter は不要** (2026-05-04): Inertia は React に直接 props で渡せるため、REST 用の正規化 layer 不要。Date 等の最小整形は route 内 inline で十分
 
 その後 (大物):
 
@@ -153,51 +158,51 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `b3342d7 feat(flash): login/logout でも flash 通知 + 共通 component に切り出し`
-- typecheck / dev server / Playwright 動作確認 全 OK
-- ローカル D1 に signup 済み user 多数 + 対応 sessions
+- main: `fa4aea7 feat(articles): 新規作成と表示の最小実装` (この後 docs commit が乗る予定)
+- typecheck / build / Playwright 動作確認 全 OK
+- ローカル D1: signup 済み user (`asahi`) + 記事 1 件 (`how-to-train-your-dragon-...`) あり
 - dev server は止めた
 
-### 今日 (2026-05-04 後半) やったこと
+### 今日 (2026-05-04 続き) やったこと
 
-flash 実装回。4 commits：
+Articles 第 1 弾の実装。最小スコープ (schema + Create + Get single) で 1 commit：
 
-1. `c30e2ce` chore: .gitignore に playwright/png/claude を追加
-2. `7ff6199` refactor(features): session feature を切り出して 3 層構造に整える
-3. `087813a` feat(flash): cookie ベースの flash 機構を実装
-4. `b3342d7` feat(flash): login/logout でも flash 通知 + 共通 component に切り出し
+1. `fa4aea7` feat(articles): 新規作成と表示の最小実装
 
-設計議論を多く重ねた回。当初「sessions テーブルに flash_data カラム追加」で進めようとしたが、新規発行 session に書けない問題が出て **cookie 方式に転換**。
-副産物として「session feature を auth から切り出す」refactor (業界 standard 準拠) も完了。
+実装着手前に Get Current User の扱いを議論し「作らない」判断 (上の判断記録)。
+Articles は前回プロジェクト (`~/dev/sample/real-world/backend/hono/`) を参照しながら、Inertia 化で何が変わって何が変わらないかを確認する形で進めた。
 
 ### 直前の議論で決まったこと
 
-- **Flash は cookie 方式**: DB 案 (`sessions.flash_data`) は新規発行 session に書けない非対称が出るため却下。cookie 1 本に JSON で `{ success?, error? }`
-- **session ≠ auth**: Rails / Laravel と同じく session を独立 feature に。auth は session の利用者
-- **3 層遵守**: middleware は repository を直叩きしない。`resolveUserId` は `features/session/service.ts` に切り出し
-- **Flash は upstream PR に含めない**: Laravel-Inertia と同じく app-side の慣習。`@hono/inertia` PR は shared data 機構のみ
-- **同一リクエスト内 merge は YAGNI**: 実用上 setFlash を 1 リクエストで複数回呼ぶ場面なし、必要になったら追加
-- **FlashMessages component 切り出し**: Home / Login / Register の 3 page で使い回し。logout は /login redirect なので Login.tsx にも flash 表示が必要
+- **前回設計の見返り**: Schema / slug / repository / service tagged union は前回の Hono-only 実装そのまま。「presenter と切り離した 3 層」が分離設計の効果を発揮、UI 層 (REST → Inertia) の差し替えだけで済んだ
+- **Inertia 化で変わるところ**: presenter 削除 (React に直接 props)、route は `c.render` で page 直描画、Create 成功時は Rails 流の `c.redirect("/articles/:slug")` + flash
+- **Validation は flat**: RealWorld spec のネスト形式は採らず、auth feature と揃えて flat。Inertia `useForm` との相性も良い
+- **Service signature は `(db, ...args, input)`**: signup/login が `(db, input)` で済んでたのは viewer 不要だったから。articles は `(db, authorId, input)`。CLAUDE.md の規約文言も訂正済み
+- **URL 設計は Rails resourceful 流**: `/articles/new` (form) + `POST /articles` + `GET /articles/:slug`。RealWorld 公式は `/editor` だが手に馴染む方を採用
+- **既知 bug 発見**: `c.json({ errors }, 422)` が Inertia として認識されず dev overlay 出る。signup でも同様、articles 固有じゃない既存問題。修正は別タスク
 
 ### 次セッション最初の一手
 
 選択肢：
 
-**A. Get Current User (`/user` GET 相当)**
-- shared data で `auth.user` 既に届いてるので、spec 通り別 endpoint を作るか議論
-- 作るなら `features/auth/index.ts` に `.get("/user", requireAuth, ...)` 追加 + JSON 返却
-- 作らない判断もアリ (spec のレスポンス形式は Inertia 流に置き換える方針)
+**A. Inertia validation error 表示の修正** (既存 bug 解消)
+- 影響: signup / login / article 全 form の form-level error 表示
+- 調査: `@hono/inertia` 0.1.0 の 422 response 取り扱い、X-Inertia headers の必要性
+- 修正候補: validator middleware で X-Inertia 系 headers を付与する / errors を flash 経由で redirect-back させる
 
-**B. Articles に進む (RealWorld spec の本題)**
-- 認証周り十分動いてる。articles の CRUD 入る
-- schema 追加 (articles テーブル) → repository → service → routes → page
+**B. Article 残機能 (Update / Delete / List / Feed)**
+- Update / Delete は author 認可 (`existing.authorId !== viewerId` で forbidden)
+- List は filter (author / tag / favorited) + pagination
+- Feed は follows 依存 → Profiles を先にやる必要
 
-**C. Phase 3: upstream PR**
-- まず `@hono/inertia` の現状確認 (0.1.0 の中身、open issues / PRs)
-- issue 立て: 「shared data 機構を追加したい、こういう API どう?」
-- 設計合意取れたら hono-ir から `lib/inertia-share.ts` を切り出して PR
+**C. Profiles** (GET / follow / unfollow)
+- Articles の Feed と List の filter (author) の前提。先に終わらせると Article 全機能が一気に通る
+- self-follow 防止: 前回は CHECK 制約 (`follower_id != following_id`) だったが D1 で動くか要確認
 
-A は短時間で済む整理タスク、B は本筋、C は外向きの大仕事。あさひさんに選んでもらう。
+**D. Phase 3: upstream PR** (不変)
+- `@hono/inertia` への shared data 機構提案
+
+A は本来直すべき bug、B は本筋、C は B の前提整備、D は外向き。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
