@@ -1,4 +1,11 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -42,3 +49,19 @@ export const articles = sqliteTable("articles", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+export const follows = sqliteTable(
+  "follows",
+  {
+    followerId: integer("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followingId: integer("following_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followingId] }),
+    check("no_self_follow", sql`follower_id != following_id`),
+  ],
+);

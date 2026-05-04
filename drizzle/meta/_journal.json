@@ -22,6 +22,13 @@
       "when": 1777886351030,
       "tag": "0002_odd_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1777896414555,
+      "tag": "0003_flowery_wolfpack",
+      "breakpoints": true
     }
   ]
 }

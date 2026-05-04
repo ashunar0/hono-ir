@@ -4,6 +4,7 @@ import { createDb } from "./db/client";
 import articles from "./features/articles";
 import auth from "./features/auth";
 import { resolveAuthUser } from "./features/auth/service";
+import profiles from "./features/profiles";
 import { consumeFlash } from "./lib/flash";
 import { inertiaHelpers } from "./lib/inertia-helpers";
 import { sharedData } from "./lib/inertia-share";
@@ -41,6 +42,7 @@ app.use(sharedData<Env>(share));
 const routes = app
   .get("/", (c) => c.render("Home", { message: "Hello, Hono × Inertia!" }))
   .route("/", auth)
+  .route("/", profiles)
   .route("/", articles);
 
 export default routes;
