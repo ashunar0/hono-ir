@@ -1,18 +1,9 @@
 import type { Db } from "../../db/client";
 import type { AuthUser } from "../../lib/auth-user";
 import { hashPassword, verifyPassword } from "../../lib/password";
+import { generateSessionId, SESSION_TTL_MS } from "../../lib/session";
 import { sessionRepo, type SessionRepo, userRepo } from "./repository";
 import type { CreateUserRequest, LoginUserRequest } from "./validators";
-
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-// セッション ID を生成 (32 bytes random hex)
-const generateSessionId = () => {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-};
 
 // session を発行 (signup / login で共通の流れ)
 const issueSession = async (sessions: SessionRepo, userId: number) => {

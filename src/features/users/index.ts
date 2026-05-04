@@ -4,7 +4,7 @@ import {
   clearSessionCookie,
   getSessionCookie,
   setSessionCookie,
-} from "../../lib/session-cookie";
+} from "../../lib/session";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { loginUser, logoutUser, signupUser } from "./service";

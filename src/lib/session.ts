@@ -1,10 +1,20 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 
+// session に関する pure / Context-only な primitives を集約。
+// DB 触る orchestration (issueSession 等) は features/auth/service.ts 側。
+
 const SESSION_COOKIE = "session_id";
 
-// 読む・書く・消す全てここに集約。
-// cookie 名、属性 (httpOnly, secure, sameSite, path) のポリシーを 1 箇所で管理。
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+// セッション ID を生成 (32 bytes random hex)
+export const generateSessionId = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
 
 export const getSessionCookie = (c: Context): string | undefined =>
   getCookie(c, SESSION_COOKIE);
