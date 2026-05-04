@@ -1,26 +1,10 @@
 import { createMiddleware } from "hono/factory";
-import { createDb, type Db } from "../db/client";
-import { sessionRepo } from "../features/auth/repository";
+import { createDb } from "../db/client";
+import { resolveUserId } from "../features/session/service";
 import { getSessionCookie } from "../lib/session";
 
 export type AuthVariables = {
   userId: number;
-};
-
-// session を引いて userId を返す。失敗したら null
-const resolveUserId = async (
-  db: Db,
-  sessionId: string | undefined,
-): Promise<number | null> => {
-  if (!sessionId) return null;
-
-  const session = await sessionRepo(db).findById(sessionId);
-  if (!session) return null;
-
-  // 期限切れ
-  if (session.expiresAt < new Date()) return null;
-
-  return session.userId;
 };
 
 // 防衛係: ログイン必須。未ログインなら /login へ redirect
