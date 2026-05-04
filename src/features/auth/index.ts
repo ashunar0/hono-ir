@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
+import { setFlash } from "../../lib/flash";
 import {
   clearSessionCookie,
   getSessionCookie,
@@ -34,6 +35,7 @@ const app = new Hono<Env>()
     }
 
     setSessionCookie(c, result.session);
+    setFlash(c, { success: "ログインに成功しました" });
     return c.redirect("/", 303);
   })
   // ログインフォーム表示
