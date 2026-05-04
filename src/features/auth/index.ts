@@ -35,7 +35,7 @@ const app = new Hono<Env>()
     }
 
     setSessionCookie(c, result.session);
-    setFlash(c, { success: "ログインに成功しました" });
+    setFlash(c, { success: "アカウントを作成しました" });
     return c.redirect("/", 303);
   })
   // ログインフォーム表示
@@ -50,6 +50,7 @@ const app = new Hono<Env>()
     }
 
     setSessionCookie(c, result.session);
+    setFlash(c, { success: "ログインしました" });
     return c.redirect("/", 303);
   })
   // ログアウト
@@ -61,6 +62,7 @@ const app = new Hono<Env>()
     }
 
     clearSessionCookie(c);
+    setFlash(c, { success: "ログアウトしました" });
     return c.redirect("/login", 303);
   });
 
