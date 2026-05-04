@@ -2,7 +2,10 @@ import type { Db } from "../../db/client";
 import { userRepo } from "../users/repository";
 import { articleRepo } from "./repository";
 import { generateSlug } from "./slug";
-import type { CreateArticleRequest } from "./validators";
+import type {
+  CreateArticleRequest,
+  UpdateArticleRequest,
+} from "./validators";
 
 // 記事作成の orchestration。
 // 戻り値は tagged union: { kind: "ok", article }
@@ -40,4 +43,36 @@ export async function getArticleBySlug(db: Db, slug: string) {
   if (!author) return { kind: "not_found" as const };
 
   return { kind: "ok" as const, article, author };
+}
+
+// 記事更新の orchestration。
+// 戻り値は tagged union: { kind: "ok", article } | { kind: "not_found" } | { kind: "forbidden" }
+// slug は title が変わっても更新しない (URL 不変)
+export async function updateArticle(
+  db: Db,
+  slug: string,
+  viewerId: number,
+  input: UpdateArticleRequest,
+) {
+  const articles = articleRepo(db);
+
+  const existing = await articles.findBySlug(slug);
+  if (!existing) return { kind: "not_found" as const };
+  if (existing.authorId !== viewerId) return { kind: "forbidden" as const };
+
+  const updated = await articles.update(existing.id, input);
+  return { kind: "ok" as const, article: updated };
+}
+
+// 記事削除の orchestration。
+// 戻り値は tagged union: { kind: "ok" } | { kind: "not_found" } | { kind: "forbidden" }
+export async function deleteArticle(db: Db, slug: string, viewerId: number) {
+  const articles = articleRepo(db);
+
+  const existing = await articles.findBySlug(slug);
+  if (!existing) return { kind: "not_found" as const };
+  if (existing.authorId !== viewerId) return { kind: "forbidden" as const };
+
+  await articles.delete(existing.id);
+  return { kind: "ok" as const };
 }

@@ -156,6 +156,8 @@ docs/
 - **Article slug は前回踏襲** (2026-05-04): `slugify(title) + "-" + Date.now().toString(36)`。衝突回避は timestamp 任せ。個人開発レベルで十分、厳密にやるなら nanoid 等
 - **Article validation は flat** (2026-05-04): RealWorld spec のネスト形式 `{ article: {...} }` ではなく flat に統一。auth feature が既に flat だったので consistency 優先 + Inertia `useForm` との相性も良い
 - **Article view layer は feature 内に切り出し** (2026-05-04): Inertia でも整形 (Date → ISO / 機密 field 除外) は必要。当初「軽量だから inline」と判断したが route が長くなったので `features/articles/view.ts` に集約。前回 (Hono-only) の `presenter.ts` の Inertia 版に相当。Show.tsx も `ArticleView` 型を import して props 型を共有
+- **Article slug は不変** (2026-05-04): Update で title が変わっても slug は再生成しない。URL 安定 (履歴 / SEO / 外部 link)、Twitter / GitHub 等と同じ流派
+- **forbidden / not_found の inline は維持** (2026-05-04): Update / Delete / Edit form の 3 箇所で `setFlash(c, { error }) + c.redirect(...)` が重複しているが、3 箇所で困ってないので YAGNI 維持。List / Feed 等で更に重複が増えたら `lib/responses.ts` ヘルパー切り出しを検討する (リファクタ候補として残す)
 
 その後 (大物):
 

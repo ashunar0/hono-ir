@@ -3,11 +3,21 @@ import { createDb } from "../../db/client";
 import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
-import { createArticle, getArticleBySlug } from "./service";
-import { createArticleSchema } from "./validators";
+import {
+  createArticle,
+  deleteArticle,
+  getArticleBySlug,
+  updateArticle,
+} from "./service";
+import { createArticleSchema, updateArticleSchema } from "./validators";
 import { toArticleView } from "./view";
 
-type Env = { Bindings: CloudflareBindings };
+type Env = {
+  Bindings: CloudflareBindings;
+  // Show route が optional auth で userId を使うため宣言。
+  // requireAuth が付く route では middleware 側の型 merge で number に narrow される
+  Variables: { userId?: number };
+};
 
 const app = new Hono<Env>()
   // 新規記事フォーム表示
@@ -28,6 +38,63 @@ const app = new Hono<Env>()
       return c.redirect(`/articles/${result.article.slug}`, 303);
     },
   )
+  // 記事編集フォーム表示
+  .get("/articles/:slug/edit", requireAuth, async (c) => {
+    const slug = c.req.param("slug");
+    const result = await getArticleBySlug(createDb(c.env.DB), slug);
+
+    if (result.kind === "not_found") return c.notFound();
+    if (result.article.authorId !== c.var.userId) {
+      setFlash(c, { error: "編集権限がありません" });
+      return c.redirect(`/articles/${slug}`, 303);
+    }
+
+    return c.render("Articles/Edit", {
+      article: toArticleView(result.article, result.author),
+    });
+  })
+  // 記事更新
+  .put(
+    "/articles/:slug",
+    requireAuth,
+    validateJson(updateArticleSchema),
+    async (c) => {
+      const slug = c.req.param("slug");
+      const result = await updateArticle(
+        createDb(c.env.DB),
+        slug,
+        c.var.userId,
+        c.req.valid("json"),
+      );
+
+      if (result.kind === "not_found") return c.notFound();
+      if (result.kind === "forbidden") {
+        setFlash(c, { error: "編集権限がありません" });
+        return c.redirect(`/articles/${slug}`, 303);
+      }
+
+      setFlash(c, { success: "記事を更新しました" });
+      return c.redirect(`/articles/${slug}`, 303);
+    },
+  )
+  // 記事削除
+  .delete("/articles/:slug", requireAuth, async (c) => {
+    const slug = c.req.param("slug");
+    const result = await deleteArticle(
+      createDb(c.env.DB),
+      slug,
+      c.var.userId,
+    );
+
+    if (result.kind === "not_found") return c.notFound();
+    if (result.kind === "forbidden") {
+      setFlash(c, { error: "削除権限がありません" });
+      return c.redirect(`/articles/${slug}`, 303);
+    }
+
+    setFlash(c, { success: "記事を削除しました" });
+    return c.redirect("/", 303);
+  })
   // 記事表示
   .get("/articles/:slug", async (c) => {
     const result = await getArticleBySlug(
@@ -35,12 +102,11 @@ const app = new Hono<Env>()
       c.req.param("slug"),
     );
 
-    if (result.kind === "not_found") {
-      return c.notFound();
-    }
+    if (result.kind === "not_found") return c.notFound();
 
     return c.render("Articles/Show", {
       article: toArticleView(result.article, result.author),
+      isAuthor: c.var.userId !== undefined && result.article.authorId === c.var.userId,
     });
   });
 

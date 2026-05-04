@@ -20,6 +20,32 @@ export const articleRepo = (db: Db) => ({
     if (!row) throw new Error("failed to create article");
     return row;
   },
+
+  // 部分更新。渡された field のみ反映、updatedAt は常に現在時刻
+  async update(
+    id: number,
+    fields: { title?: string; description?: string; body?: string },
+  ) {
+    const [row] = await db
+      .update(articles)
+      .set({
+        ...(fields.title !== undefined && { title: fields.title }),
+        ...(fields.description !== undefined && {
+          description: fields.description,
+        }),
+        ...(fields.body !== undefined && { body: fields.body }),
+        updatedAt: new Date(),
+      })
+      .where(eq(articles.id, id))
+      .returning();
+    if (!row) throw new Error("failed to update article");
+    return row;
+  },
+
+  // 記事削除
+  async delete(id: number) {
+    await db.delete(articles).where(eq(articles.id, id));
+  },
 });
 
 export type ArticleRepo = ReturnType<typeof articleRepo>;
