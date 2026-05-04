@@ -1,8 +1,8 @@
 import { inertia } from "@hono/inertia";
 import { type Context, Hono } from "hono";
 import { createDb } from "./db/client";
-import users from "./features/users";
-import { resolveAuthUser } from "./features/users/service";
+import auth from "./features/auth";
+import { resolveAuthUser } from "./features/auth/service";
 import { sharedData } from "./lib/inertia-share";
 import { loadAuth, type OptionalAuthVariables } from "./middleware/auth";
 import { rootView } from "./root-view";
@@ -27,7 +27,7 @@ app.use(sharedData<Env>(share));
 
 const routes = app
   .get("/", (c) => c.render("Home", { message: "Hello, Hono × Inertia!" }))
-  .route("/", users);
+  .route("/", auth);
 
 export default routes;
 export type AppType = typeof routes;

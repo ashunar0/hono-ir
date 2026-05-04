@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { createDb, type Db } from "../db/client";
-import { sessionRepo } from "../features/users/repository";
+import { sessionRepo } from "../features/auth/repository";
 import { getSessionCookie } from "../lib/session";
 
 export type AuthVariables = {

@@ -2,7 +2,8 @@ import type { Db } from "../../db/client";
 import type { AuthUser } from "../../lib/auth-user";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { generateSessionId, SESSION_TTL_MS } from "../../lib/session";
-import { sessionRepo, type SessionRepo, userRepo } from "./repository";
+import { userRepo } from "../users/repository";
+import { sessionRepo, type SessionRepo } from "./repository";
 import type { CreateUserRequest, LoginUserRequest } from "./validators";
 
 // session を発行 (signup / login で共通の流れ)
