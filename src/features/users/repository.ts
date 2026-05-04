@@ -42,6 +42,11 @@ export const sessionRepo = (db: Db) => ({
   async create(fields: { id: string; userId: number; expiresAt: Date }) {
     await db.insert(sessions).values(fields);
   },
+
+  // session を削除。存在しなくてもエラーにしない
+  async delete(id: string) {
+    await db.delete(sessions).where(eq(sessions.id, id));
+  },
 });
 
 export type SessionRepo = ReturnType<typeof sessionRepo>;

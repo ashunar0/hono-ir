@@ -131,6 +131,12 @@ export async function signupUser(db: Db, input: CreateUserRequest) {
   return { kind: "ok" as const, session };
 }
 
+// ログアウトの orchestration。
+// session 削除のみ。失敗概念なし（best-effort）
+export async function logoutUser(db: Db, sessionId: string) {
+  await sessionRepo(db).delete(sessionId);
+}
+
 // ログインの orchestration。
 // 戻り値は tagged union: { kind: "ok", session } | { kind: "invalid_credentials" }
 export async function loginUser(db: Db, input: LoginUserRequest) {
