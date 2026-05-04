@@ -42,6 +42,13 @@ src/
       service.ts       # resolveUserId
     users/             # ユーザー feature (現在は repository のみ、profile 機能の土台)
       repository.ts    # userRepo
+    articles/          # 記事 feature
+      index.ts         # Hono sub-app (routes)
+      validators.ts    # createArticleSchema (flat)
+      slug.ts          # generateSlug (slugify + Date.now base36 suffix)
+      repository.ts    # articleRepo (factory)
+      service.ts       # createArticle / getArticleBySlug
+      view.ts          # ArticleView 型 + toArticleView (Date ISO 化 + author 機密 field 除外)
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -60,6 +67,8 @@ app/
     Home.tsx           # ログイン状態に応じて nav 切り替え + Logout ボタン + FlashMessages
     Users/Register.tsx # FlashMessages 含む
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
+    Articles/New.tsx   # 記事新規作成 form (useForm flat)
+    Articles/Show.tsx  # 記事表示 (props 型は features/articles/view から import)
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
   lib/
@@ -146,7 +155,7 @@ docs/
 - **Get Current User (`/user` GET) は作らない** (2026-05-04): shared data で全 page に `auth.user` 届いてるので「ページ全体にバンってユーザ情報欲しい場面」が今ない。代替手段 (`useAuth()`) で取れる、ただそれだけ。必要になったら追加する。
 - **Article slug は前回踏襲** (2026-05-04): `slugify(title) + "-" + Date.now().toString(36)`。衝突回避は timestamp 任せ。個人開発レベルで十分、厳密にやるなら nanoid 等
 - **Article validation は flat** (2026-05-04): RealWorld spec のネスト形式 `{ article: {...} }` ではなく flat に統一。auth feature が既に flat だったので consistency 優先 + Inertia `useForm` との相性も良い
-- **Article presenter は不要** (2026-05-04): Inertia は React に直接 props で渡せるため、REST 用の正規化 layer 不要。Date 等の最小整形は route 内 inline で十分
+- **Article view layer は feature 内に切り出し** (2026-05-04): Inertia でも整形 (Date → ISO / 機密 field 除外) は必要。当初「軽量だから inline」と判断したが route が長くなったので `features/articles/view.ts` に集約。前回 (Hono-only) の `presenter.ts` の Inertia 版に相当。Show.tsx も `ArticleView` 型を import して props 型を共有
 
 その後 (大物):
 

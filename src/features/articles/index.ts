@@ -5,6 +5,7 @@ import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { createArticle, getArticleBySlug } from "./service";
 import { createArticleSchema } from "./validators";
+import { toArticleView } from "./view";
 
 type Env = { Bindings: CloudflareBindings };
 
@@ -29,27 +30,17 @@ const app = new Hono<Env>()
   )
   // 記事表示
   .get("/articles/:slug", async (c) => {
-    const slug = c.req.param("slug");
-    const result = await getArticleBySlug(createDb(c.env.DB), slug);
+    const result = await getArticleBySlug(
+      createDb(c.env.DB),
+      c.req.param("slug"),
+    );
 
     if (result.kind === "not_found") {
       return c.notFound();
     }
 
     return c.render("Articles/Show", {
-      article: {
-        slug: result.article.slug,
-        title: result.article.title,
-        description: result.article.description,
-        body: result.article.body,
-        createdAt: result.article.createdAt.toISOString(),
-        updatedAt: result.article.updatedAt.toISOString(),
-        author: {
-          username: result.author.username,
-          bio: result.author.bio,
-          image: result.author.image,
-        },
-      },
+      article: toArticleView(result.article, result.author),
     });
   });
 

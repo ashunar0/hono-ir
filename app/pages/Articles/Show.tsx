@@ -1,21 +1,8 @@
 import { Link } from "@inertiajs/react";
+import type { ArticleView } from "../../../src/features/articles/view";
 import { FlashMessages } from "../../components/FlashMessages";
 
-type Props = {
-  article: {
-    slug: string;
-    title: string;
-    description: string;
-    body: string;
-    createdAt: string;
-    updatedAt: string;
-    author: {
-      username: string;
-      bio: string | null;
-      image: string | null;
-    };
-  };
-};
+type Props = { article: ArticleView };
 
 export default function Show({ article }: Props) {
   return (
