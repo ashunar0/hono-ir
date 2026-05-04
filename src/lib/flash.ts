@@ -10,6 +10,8 @@ const FLASH_COOKIE = "flash";
 export type Flash = {
   success?: string;
   error?: string;
+  // フォームの field-level エラー (Inertia useForm.errors が読み取る形式)
+  errors?: Record<string, string>;
 };
 
 const EMPTY: Flash = {};

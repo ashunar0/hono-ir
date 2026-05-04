@@ -20,18 +20,15 @@ const app = new Hono<Env>()
   .post("/users", validateJson(createUserSchema), async (c) => {
     const result = await signupUser(createDb(c.env.DB), c.req.valid("json"));
 
-    // 各エラーケースを 422 + errors にマッピング
+    // 各エラーケースを c.back で referer (= /register) に戻す
     if (result.kind === "email_taken") {
-      return c.json({ errors: { email: "email is already taken" } }, 422);
+      return c.back({ errors: { email: "email is already taken" } });
     }
     if (result.kind === "username_taken") {
-      return c.json({ errors: { username: "username is already taken" } }, 422);
+      return c.back({ errors: { username: "username is already taken" } });
     }
     if (result.kind === "create_failed") {
-      return c.json(
-        { errors: { email: "registration failed, try again" } },
-        422,
-      );
+      return c.back({ errors: { email: "registration failed, try again" } });
     }
 
     setSessionCookie(c, result.session);
@@ -46,7 +43,7 @@ const app = new Hono<Env>()
 
     // user enumeration を防ぐため email/password 区別なく同一エラー
     if (result.kind === "invalid_credentials") {
-      return c.json({ errors: { email: "invalid email or password" } }, 422);
+      return c.back({ errors: { email: "invalid email or password" } });
     }
 
     setSessionCookie(c, result.session);
