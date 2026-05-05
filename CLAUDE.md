@@ -178,7 +178,6 @@ docs/
 
 ### リファクタ候補
 
-- **articles の forbidden / not_found を c.back 化**: 現在 inline で `setFlash(c, { error }) + c.redirect(...)` が article routes 3 箇所で重複。`c.back({ flash: { error: "..." } })` で 1 行化できる (referer に戻るなら一番素直)。明示 URL に戻したい場合は別 helper か c.redirect 維持
 - **404 page を Inertia 流に**: 現状 `c.notFound()` のデフォルト plain text。`app.notFound((c) => c.render("Errors/NotFound", {}))` で page 化
 
 ### 判断記録
@@ -227,6 +226,9 @@ docs/
 - **Favorite 操作は flash 通知無し、c.back のみ** (2026-05-05): favorite/unfavorite は Twitter の like のような silent toggle が UX 期待値。flash 通知 (「お気に入りに追加しました」等) は逆にうるさい。`c.back()` で referer に戻すだけ、partial reload (client 側 `only`) で count + 色だけ即時反映。signup / article create のような **state を作る操作** には flash success、favorite のような **状態の toggle** には flash 無しの使い分け
 - **partial reload key は使い場所ごとに違うので prop で受ける** (2026-05-05): FavoriteButton は ArticleCard (一覧) と Article Show (1 件) 両方で使うが、partial reload で取り直すべき key が違う (一覧 = `["articles", "articlesCount", "query"]`、Show = `["article"]`)。component 内に hardcode せず `only: string[]` を prop で受ける形に。Pagination component は使い場所が一覧のみなので hardcode で OK、対称性が壊れるが実態に合わせる
 - **inline style での border shorthand と borderColor の混在は React warning** (2026-05-05): FavoriteButton で `baseStyle: { border: "1px solid #ccc" }` + `activeStyle: { ...baseStyle, borderColor: "#e57373" }` という形にしたら React が `Removing borderColor border` warning を出した (shorthand `border` と long-hand `borderColor` の混在は再 render 時に conflict する)。`border` を `borderWidth` / `borderStyle` / `borderColor` の 3 つに分解して解消。Inertia 化のような CSR 文脈で React 19 が厳しめに警告するパターン
+- **`c.back` の解釈拡大: errors 専用 → redirect-back の汎用 helper** (2026-05-05): 当初 `c.back` は「validation errors を redirect-back で運ぶための 1 行 helper」として導入したが、実態は「**Referer ヘッダから戻り先を自動取得して 303 redirect、ついでに任意で flash/errors を抱き合わせ**」の汎用 helper。Favorite で `c.back()` 引数空 (silent toggle) を使ってみて違和感が出たのを契機に再整理 → **redirect 先 = Referer の場面で広く使う方針** に拡張。Follow / Unfollow / articles の Update/Delete forbidden / comments の add/delete も `c.back({ flash, fallback })` に統一。`fallback` は Referer が無い稀ケース (URL 直叩き等) の保険として渡す。**例外**: Edit form (GET `/articles/:slug/edit`) の forbidden は **Show に固定で飛ばしたい** ので `c.redirect` 維持 (URL 直叩き / Home からの link で Referer が Show 以外な可能性、Referer に戻すと意図と外れる)。
+- **`c.back` 採用の判断軸: 将来の機能拡張に強い** (2026-05-05): 例えば Follow ボタンを Profile だけでなく将来 Article Show の著者情報横にも置く (Zenn / Conduit 流) 場合、`c.redirect(/profiles/${username})` 固定だと「記事から Follow → 強制 Profile 遷移」になって UX 損ねる。`c.back()` なら「押された場所に留まる」(Twitter / GitHub 流派) が自然に効く。**SNS の Follow / Like 操作は `c.back` 流派が現代の慣例**、`c.redirect` 固定は「フォロー直後に相手 page を見せたい」明示的意図があるときだけ使う使い分け。同じ判断軸で comments も Show 固定 redirect から `c.back` に統一 (将来 comment 一覧が別 page になる可能性があるが、現状は Show のみ動線なので大差ないが、`fallback: /articles/:slug` で保険)
+- **Follow と Favorite の flash 通知は意図的に書き分け** (2026-05-05): Follow は flash 成功通知あり、Favorite は flash 無し (silent toggle)。SNS 慣例で **「Follow / Unfollow は通知あり」**「**Like / Favorite は通知無し**」が一般的 (Twitter / GitHub もこの流派)。**state を作る操作 = 通知あり、ハートの toggle = silent** という UX 軸で書き分ける。判断記録に明文化することで「なぜ片方だけ flash あるの？」という後の混乱を防ぐ
 
 その後 (大物):
 
