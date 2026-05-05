@@ -11,7 +11,6 @@ import {
   updateArticle,
 } from "./service";
 import { createArticleSchema, updateArticleSchema } from "./validators";
-import { toArticleView } from "./view";
 
 type Env = {
   Bindings: CloudflareBindings;
@@ -42,17 +41,19 @@ const app = new Hono<Env>()
   // 記事編集フォーム表示
   .get("/articles/:slug/edit", requireAuth, async (c) => {
     const slug = c.req.param("slug");
-    const result = await getArticleBySlug(createDb(c.env.DB), slug);
+    const result = await getArticleBySlug(
+      createDb(c.env.DB),
+      slug,
+      c.var.userId,
+    );
 
     if (result.kind === "not_found") return c.notFound();
-    if (result.article.authorId !== c.var.userId) {
+    if (result.authorId !== c.var.userId) {
       setFlash(c, { error: "編集権限がありません" });
       return c.redirect(`/articles/${slug}`, 303);
     }
 
-    return c.render("Articles/Edit", {
-      article: toArticleView(result.article, result.author),
-    });
+    return c.render("Articles/Edit", { article: result.article });
   })
   // 記事更新
   .put(
@@ -103,7 +104,7 @@ const app = new Hono<Env>()
     const viewerId = c.var.userId;
 
     const [articleResult, commentsResult] = await Promise.all([
-      getArticleBySlug(db, slug),
+      getArticleBySlug(db, slug, viewerId),
       listComments(db, slug),
     ]);
 
@@ -113,9 +114,9 @@ const app = new Hono<Env>()
       commentsResult.kind === "ok" ? commentsResult.comments : [];
 
     return c.render("Articles/Show", {
-      article: toArticleView(articleResult.article, articleResult.author),
+      article: articleResult.article,
       isAuthor:
-        viewerId !== undefined && articleResult.article.authorId === viewerId,
+        viewerId !== undefined && articleResult.authorId === viewerId,
       comments,
     });
   });

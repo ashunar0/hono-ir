@@ -67,6 +67,19 @@ export const comments = sqliteTable("comments", {
     .$defaultFn(() => new Date()),
 });
 
+export const favorites = sqliteTable(
+  "favorites",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.articleId] })],
+);
+
 export const follows = sqliteTable(
   "follows",
   {

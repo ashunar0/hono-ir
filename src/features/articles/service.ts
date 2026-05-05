@@ -1,6 +1,11 @@
 import { type SQL, and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { articles as articlesTable } from "../../db/schema";
+import { favoriteRepo } from "../favorites/repository";
+import {
+  resolveFavoriteContext,
+  resolveFavoriteFor,
+} from "../favorites/service";
 import { followRepo } from "../follows/repository";
 import { userRepo } from "../users/repository";
 import { articleRepo } from "./repository";
@@ -10,21 +15,36 @@ import type {
   CreateArticleRequest,
   UpdateArticleRequest,
 } from "./validators";
-import { toArticleListView } from "./view";
+import { toArticleListView, toArticleView } from "./view";
 
 type ArticleRow = typeof articlesTable.$inferSelect;
 
-// 一覧の view 化。author を bulk 解決して N+1 を回避
-async function presentArticleList(db: Db, rows: ArticleRow[]) {
+// 一覧の view 化。author + favorites を bulk 解決して N+1 を回避
+async function presentArticleList(
+  db: Db,
+  rows: ArticleRow[],
+  viewerId: number | undefined,
+) {
   if (rows.length === 0) return [];
   const authorIds = [...new Set(rows.map((a) => a.authorId))];
-  const authors = await userRepo(db).findByIds(authorIds);
+  const articleIds = rows.map((a) => a.id);
+
+  const [authors, favoriteCtx] = await Promise.all([
+    userRepo(db).findByIds(authorIds),
+    resolveFavoriteContext(db, viewerId, articleIds),
+  ]);
   const authorById = new Map(authors.map((a) => [a.id, a]));
+
   return rows.map((a) => {
     const author = authorById.get(a.authorId);
     // FK 制約で author は必ず存在するはず
     if (!author) throw new Error("author not found");
-    return toArticleListView(a, author);
+    return toArticleListView(
+      a,
+      author,
+      favoriteCtx.counts.get(a.id) ?? 0,
+      favoriteCtx.favoritedIds.has(a.id),
+    );
   });
 }
 
@@ -48,17 +68,34 @@ export async function createArticle(
   return { kind: "ok" as const, article: created };
 }
 
-// 記事 1 件取得の orchestration。author も併せて返す。
-// 戻り値は tagged union: { kind: "ok", article, author } | { kind: "not_found" }
-export async function getArticleBySlug(db: Db, slug: string) {
+// 記事 1 件取得の orchestration。author + favorite 文脈も解決して view を返す。
+// 戻り値は tagged union: { kind: "ok", article: ArticleView, authorId } | { kind: "not_found" }
+// authorId は route が isAuthor 判定に使うので raw のまま添える
+export async function getArticleBySlug(
+  db: Db,
+  slug: string,
+  viewerId: number | undefined,
+) {
   const article = await articleRepo(db).findBySlug(slug);
   if (!article) return { kind: "not_found" as const };
 
   // FK 制約で author は必ず存在するはず。万一 null なら整合性破綻なので not_found 扱い
-  const author = await userRepo(db).findById(article.authorId);
+  const [author, favoriteCtx] = await Promise.all([
+    userRepo(db).findById(article.authorId),
+    resolveFavoriteFor(db, viewerId, article.id),
+  ]);
   if (!author) return { kind: "not_found" as const };
 
-  return { kind: "ok" as const, article, author };
+  return {
+    kind: "ok" as const,
+    article: toArticleView(
+      article,
+      author,
+      favoriteCtx.favoritesCount,
+      favoriteCtx.favorited,
+    ),
+    authorId: article.authorId,
+  };
 }
 
 // 記事更新の orchestration。
@@ -95,12 +132,16 @@ export async function deleteArticle(db: Db, slug: string, viewerId: number) {
 
 // 一覧 (Global Feed) の orchestration。
 // list 系はエラー variant 不要 (filter 不一致 = 空配列で正常終了) なので tagged union 使わない
-// author は service 層の filter 引数。HTTP schema には乗らない (Profile route 経由でのみ渡る)
+// author / favorited は service 層の filter 引数。HTTP schema には乗らない (Profile route 経由でのみ渡る)
 export async function listArticles(
   db: Db,
-  query: Pick<ArticlesQuery, "limit" | "offset"> & { author?: string },
+  query: Pick<ArticlesQuery, "limit" | "offset"> & {
+    author?: string;
+    favorited?: string;
+  },
+  viewerId: number | undefined,
 ) {
-  const { limit, offset, author } = query;
+  const { limit, offset, author, favorited } = query;
   const conditions: SQL[] = [];
 
   // 作者で絞り込み
@@ -110,12 +151,21 @@ export async function listArticles(
     conditions.push(eq(articlesTable.authorId, u.id));
   }
 
+  // 指定 user が favorite してる記事で絞り込み (Profile の Favorited タブ用)
+  if (favorited !== undefined) {
+    const u = await userRepo(db).findByUsername(favorited);
+    if (!u) return { articles: [], articlesCount: 0 };
+    const ids = await favoriteRepo(db).findArticleIdsFavoritedBy(u.id);
+    if (ids.length === 0) return { articles: [], articlesCount: 0 };
+    conditions.push(inArray(articlesTable.id, ids));
+  }
+
   const where = conditions.length ? and(...conditions) : undefined;
   const articles = articleRepo(db);
   const rows = await articles.list(where, limit, offset);
   const total = await articles.count(where);
   return {
-    articles: await presentArticleList(db, rows),
+    articles: await presentArticleList(db, rows, viewerId),
     articlesCount: total,
   };
 }
@@ -135,7 +185,7 @@ export async function feedArticles(
   const rows = await articles.list(where, limit, offset);
   const total = await articles.count(where);
   return {
-    articles: await presentArticleList(db, rows),
+    articles: await presentArticleList(db, rows, viewerId),
     articlesCount: total,
   };
 }

@@ -23,9 +23,18 @@ const app = new Hono<Env>()
     const db = createDb(c.env.DB);
     const userId = c.var.userId;
 
+    // tab=my: 本人が author の記事 / tab=favorited: 本人が favorite した記事
+    const articleFilter =
+      query.tab === "favorited"
+        ? { favorited: username }
+        : { author: username };
     const [profileResult, articleResult] = await Promise.all([
       getProfile(db, userId, username),
-      listArticles(db, { ...query, author: username }),
+      listArticles(
+        db,
+        { limit: query.limit, offset: query.offset, ...articleFilter },
+        userId,
+      ),
     ]);
 
     if (profileResult.kind === "not_found") return c.notFound();

@@ -1,6 +1,7 @@
 import { Link, router, useForm } from "@inertiajs/react";
 import type { CommentView } from "../../../src/features/comments/view";
 import type { ArticleView } from "../../../src/features/articles/view";
+import { FavoriteButton } from "../../components/FavoriteButton";
 import { FlashMessages } from "../../components/FlashMessages";
 import { useAuth } from "../../lib/use-auth";
 
@@ -16,10 +17,25 @@ export default function Show({ article, isAuthor, comments }: Props) {
       <FlashMessages />
       <article>
         <h1>{article.title}</h1>
-        <p style={{ color: "#666" }}>
-          by {article.author.username} ·{" "}
-          {new Date(article.createdAt).toLocaleDateString()}
-        </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            color: "#666",
+          }}
+        >
+          <p style={{ margin: 0 }}>
+            by {article.author.username} ·{" "}
+            {new Date(article.createdAt).toLocaleDateString()}
+          </p>
+          <FavoriteButton
+            slug={article.slug}
+            favorited={article.favorited}
+            favoritesCount={article.favoritesCount}
+            only={["article"]}
+          />
+        </div>
         <p>
           <em>{article.description}</em>
         </p>

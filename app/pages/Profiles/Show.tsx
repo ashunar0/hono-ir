@@ -14,8 +14,15 @@ type Props = {
   articlesCount: number;
 };
 
-function buildProfileHref(username: string, q: ProfileArticlesQuery) {
+const TAB_PARTIAL_KEYS = ["articles", "articlesCount", "query"];
+
+// 現在の tab / offset / limit から URL を組み立てる。tab 切替時は offset を 0 にリセット
+function buildProfileHref(
+  username: string,
+  q: { tab: ProfileArticlesQuery["tab"]; offset: number; limit: number },
+) {
   const sp = new URLSearchParams();
+  if (q.tab !== "my") sp.set("tab", q.tab);
   if (q.offset > 0) sp.set("offset", String(q.offset));
   if (q.limit !== 10) sp.set("limit", String(q.limit));
   const qs = sp.toString();
@@ -30,6 +37,11 @@ export default function Show({
 }: Props) {
   const { user } = useAuth();
   const isLoggedIn = user !== null;
+
+  const tabs = [
+    { key: "my" as const, label: "My Articles" },
+    { key: "favorited" as const, label: "Favorited Articles" },
+  ];
 
   return (
     <main>
@@ -77,7 +89,35 @@ export default function Show({
       </article>
 
       <section style={{ marginTop: "2rem" }}>
-        <h2>Articles</h2>
+        <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
+          {tabs.map((t) => {
+            const isActive = t.key === query.tab;
+            return (
+              <Link
+                key={t.key}
+                href={buildProfileHref(profile.username, {
+                  tab: t.key,
+                  offset: 0,
+                  limit: query.limit,
+                })}
+                preserveScroll
+                only={TAB_PARTIAL_KEYS}
+                style={{
+                  padding: "0.25rem 0.75rem",
+                  borderBottom: isActive
+                    ? "2px solid #333"
+                    : "2px solid transparent",
+                  fontWeight: isActive ? "bold" : "normal",
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </nav>
+
         {articles.length === 0 ? (
           <p style={{ color: "#888" }}>No articles are here... yet.</p>
         ) : (
@@ -91,7 +131,11 @@ export default function Show({
           limit={query.limit}
           offset={query.offset}
           buildHref={(newOffset) =>
-            buildProfileHref(profile.username, { ...query, offset: newOffset })
+            buildProfileHref(profile.username, {
+              tab: query.tab,
+              limit: query.limit,
+              offset: newOffset,
+            })
           }
         />
       </section>

@@ -1,5 +1,9 @@
 import { Link } from "@inertiajs/react";
 import type { ArticleListView } from "../../src/features/articles/view";
+import { FavoriteButton } from "./FavoriteButton";
+
+// 一覧 page (Home / Profile) で使うので partial reload は同じ keys
+const PARTIAL_KEYS = ["articles", "articlesCount", "query"];
 
 export function ArticleCard({ article }: { article: ArticleListView }) {
   return (
@@ -9,13 +13,29 @@ export function ArticleCard({ article }: { article: ArticleListView }) {
         padding: "1rem 0",
       }}
     >
-      <header style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-        <Link href={`/profiles/${article.author.username}`}>
-          @{article.author.username}
-        </Link>
-        <span style={{ marginLeft: "0.5rem", color: "#888" }}>
-          {new Date(article.createdAt).toLocaleDateString()}
-        </span>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "0.5rem",
+          fontSize: "0.9rem",
+        }}
+      >
+        <div>
+          <Link href={`/profiles/${article.author.username}`}>
+            @{article.author.username}
+          </Link>
+          <span style={{ marginLeft: "0.5rem", color: "#888" }}>
+            {new Date(article.createdAt).toLocaleDateString()}
+          </span>
+        </div>
+        <FavoriteButton
+          slug={article.slug}
+          favorited={article.favorited}
+          favoritesCount={article.favoritesCount}
+          only={PARTIAL_KEYS}
+        />
       </header>
       <Link
         href={`/articles/${article.slug}`}

@@ -28,10 +28,11 @@ export const articlesQuerySchema = z.object({
 
 export type ArticlesQuery = z.infer<typeof articlesQuerySchema>;
 
-// Profile page の記事一覧 query。pagination のみ
-export const profileArticlesQuerySchema = articlesQuerySchema.pick({
-  limit: true,
-  offset: true,
-});
+// Profile page の記事一覧 query。pagination + tab (my=本人の記事 / favorited=本人がいいねした記事)
+export const profileArticlesQuerySchema = articlesQuerySchema
+  .pick({ limit: true, offset: true })
+  .extend({
+    tab: z.enum(["my", "favorited"]).default("my"),
+  });
 
 export type ProfileArticlesQuery = z.infer<typeof profileArticlesQuerySchema>;

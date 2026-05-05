@@ -7,6 +7,7 @@ import { articlesQuerySchema } from "./features/articles/validators";
 import auth from "./features/auth";
 import { resolveAuthUser } from "./features/auth/service";
 import comments from "./features/comments";
+import favorites from "./features/favorites";
 import profiles from "./features/profiles";
 import users from "./features/users";
 import { consumeFlash } from "./lib/flash";
@@ -57,7 +58,7 @@ const routes = app
       if (userId === undefined) return c.redirect("/login", 303);
       result = await feedArticles(db, userId, query);
     } else {
-      result = await listArticles(db, query);
+      result = await listArticles(db, query, userId);
     }
 
     return c.render("Home", { query, ...result });
@@ -66,7 +67,8 @@ const routes = app
   .route("/", users)
   .route("/", profiles)
   .route("/", articles)
-  .route("/", comments);
+  .route("/", comments)
+  .route("/", favorites);
 
 export default routes;
 export type AppType = typeof routes;
