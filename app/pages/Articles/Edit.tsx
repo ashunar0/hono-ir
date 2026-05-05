@@ -1,6 +1,7 @@
 import { useForm } from "@inertiajs/react";
 import type { ArticleView } from "../../../src/features/articles/view";
 import { FlashMessages } from "../../components/FlashMessages";
+import { TagInput } from "../../components/TagInput";
 
 type Props = { article: ArticleView };
 
@@ -9,6 +10,7 @@ export default function Edit({ article }: Props) {
     title: article.title,
     description: article.description,
     body: article.body,
+    tagList: article.tagList,
   });
 
   return (
@@ -58,6 +60,16 @@ export default function Edit({ article }: Props) {
           </label>
           {form.errors.body && (
             <p style={{ color: "red" }}>{form.errors.body}</p>
+          )}
+        </div>
+        <div>
+          <label>tags</label>
+          <TagInput
+            value={form.data.tagList}
+            onChange={(next) => form.setData("tagList", next)}
+          />
+          {form.errors.tagList && (
+            <p style={{ color: "red" }}>{form.errors.tagList}</p>
           )}
         </div>
         <button type="submit" disabled={form.processing}>

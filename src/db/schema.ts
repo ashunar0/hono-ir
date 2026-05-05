@@ -80,6 +80,24 @@ export const favorites = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.articleId] })],
 );
 
+export const tags = sqliteTable("tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+});
+
+export const articleTags = sqliteTable(
+  "article_tags",
+  {
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    tagId: integer("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.articleId, t.tagId] })],
+);
+
 export const follows = sqliteTable(
   "follows",
   {

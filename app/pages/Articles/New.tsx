@@ -1,11 +1,13 @@
 import { useForm } from "@inertiajs/react";
 import { FlashMessages } from "../../components/FlashMessages";
+import { TagInput } from "../../components/TagInput";
 
 export default function New() {
   const form = useForm({
     title: "",
     description: "",
     body: "",
+    tagList: [] as string[],
   });
 
   return (
@@ -55,6 +57,16 @@ export default function New() {
           </label>
           {form.errors.body && (
             <p style={{ color: "red" }}>{form.errors.body}</p>
+          )}
+        </div>
+        <div>
+          <label>tags</label>
+          <TagInput
+            value={form.data.tagList}
+            onChange={(next) => form.setData("tagList", next)}
+          />
+          {form.errors.tagList && (
+            <p style={{ color: "red" }}>{form.errors.tagList}</p>
           )}
         </div>
         <button type="submit" disabled={form.processing}>

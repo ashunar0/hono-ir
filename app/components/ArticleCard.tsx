@@ -44,9 +44,50 @@ export function ArticleCard({ article }: { article: ArticleListView }) {
         <h2 style={{ margin: "0 0 0.25rem 0" }}>{article.title}</h2>
         <p style={{ margin: 0, color: "#555" }}>{article.description}</p>
       </Link>
-      <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.85rem" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: "0.5rem",
+          fontSize: "0.85rem",
+        }}
+      >
         <Link href={`/articles/${article.slug}`}>Read more...</Link>
-      </p>
+        {article.tagList.length > 0 && (
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.3rem",
+            }}
+          >
+            {article.tagList.map((tag) => (
+              <li key={tag}>
+                <Link
+                  href={`/?tag=${encodeURIComponent(tag)}`}
+                  style={{
+                    display: "inline-block",
+                    padding: "0.1rem 0.5rem",
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    borderColor: "#bbb",
+                    borderRadius: "999px",
+                    fontSize: "0.75rem",
+                    color: "#666",
+                    textDecoration: "none",
+                  }}
+                >
+                  {tag}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </article>
   );
 }

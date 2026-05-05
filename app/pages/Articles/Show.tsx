@@ -40,6 +40,39 @@ export default function Show({ article, isAuthor, comments }: Props) {
           <em>{article.description}</em>
         </p>
         <div style={{ whiteSpace: "pre-wrap" }}>{article.body}</div>
+        {article.tagList.length > 0 && (
+          <ul
+            style={{
+              listStyle: "none",
+              margin: "1rem 0 0 0",
+              padding: 0,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.4rem",
+            }}
+          >
+            {article.tagList.map((tag) => (
+              <li key={tag}>
+                <Link
+                  href={`/?tag=${encodeURIComponent(tag)}`}
+                  style={{
+                    display: "inline-block",
+                    padding: "0.15rem 0.6rem",
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    borderColor: "#bbb",
+                    borderRadius: "999px",
+                    fontSize: "0.85rem",
+                    color: "#666",
+                    textDecoration: "none",
+                  }}
+                >
+                  {tag}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
         {isAuthor && (
           <p style={{ marginTop: "1rem" }}>
             <Link href={`/articles/${article.slug}/edit`}>Edit</Link>

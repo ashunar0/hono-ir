@@ -9,6 +9,8 @@ import { resolveAuthUser } from "./features/auth/service";
 import comments from "./features/comments";
 import favorites from "./features/favorites";
 import profiles from "./features/profiles";
+import tags from "./features/tags";
+import { listAllTags } from "./features/tags/service";
 import users from "./features/users";
 import { consumeFlash } from "./lib/flash";
 import { inertiaHelpers } from "./lib/inertia-helpers";
@@ -46,7 +48,7 @@ app.use(loadAuth);
 app.use(sharedData<Env>(share));
 
 const routes = app
-  // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、author filter / pagination は query で受ける
+  // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、tag filter / pagination は query で受ける
   .get("/", validateQuery(articlesQuerySchema), async (c) => {
     const query = c.req.valid("query");
     const db = createDb(c.env.DB);
@@ -56,19 +58,22 @@ const routes = app
     if (query.tab === "feed") {
       // 未 login で Feed 要求 → login へ
       if (userId === undefined) return c.redirect("/login", 303);
+      // Feed タブは tag filter を持たない (Your Feed の意味が変わるので無視)
       result = await feedArticles(db, userId, query);
     } else {
       result = await listArticles(db, query, userId);
     }
 
-    return c.render("Home", { query, ...result });
+    const popularTags = await listAllTags(db);
+    return c.render("Home", { query, ...result, popularTags });
   })
   .route("/", auth)
   .route("/", users)
   .route("/", profiles)
   .route("/", articles)
   .route("/", comments)
-  .route("/", favorites);
+  .route("/", favorites)
+  .route("/", tags);
 
 export default routes;
 export type AppType = typeof routes;
