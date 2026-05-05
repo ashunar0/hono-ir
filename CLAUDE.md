@@ -61,7 +61,7 @@ src/
       validators.ts    # createCommentSchema (body のみ)
       repository.ts    # commentRepo (listByArticleId / findById / create / delete)
       service.ts       # addComment / listComments / deleteComment + author を bulk 解決して N+1 回避
-      view.ts          # CommentView 型 + toCommentView (viewerId から isAuthor flag 立てる)
+      view.ts          # CommentView 型 + toCommentView (viewer 文脈は持ち込まない、isAuthor は client で判定)
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -164,7 +164,7 @@ docs/
 - [x] **Update User** (`PUT /user`): `features/users/` を route 化、`GET /settings` (form 表示) + `PUT /user` (更新) の 2 routes。全 field optional、重複チェックは自分以外、password は変更時のみ PBKDF2 hash。validator preprocess で空文字を field 別に正規化 (email/username/password → undefined "変更しない"、bio/image → null "clear")。form は `noValidate` で HTML5 validation 無効化 → サーバ validate 一本
 - [x] **Articles List/Feed + Pagination**: Home (`GET /`) を Global Feed / Your Feed タブ + pagination (1 ページ 10 件) 対応に。`articlesQuerySchema` (limit/offset/tab) で List/Feed を 1 schema に統合。author は `userRepo.findByIds` で bulk 解決して N+1 回避 (drizzle relations 未使用)、`ArticleListView` (body 抜き) で list response 帯域節約。未 login で `?tab=feed` → `/login` redirect。page props は `{ query, articles, articlesCount }` の Grouped 構造、partial reload の `only` も `["articles", "articlesCount", "query"]` の 3 keys に短縮 → sharedData の `auth` / `flash` closure は評価 skip
 - [x] **Profile に記事一覧統合**: Profile (`/profiles/:username`) が user hub。bio + Follow + 記事一覧 + Pagination が 1 page に集約。`articlesQuerySchema` から `author` を削除 (Home の `?author=` URL filter 廃止)、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})` で Profile 用に derive。Profile route で `getProfile + listArticles` を `Promise.all` 並行呼出。`listArticles` 入力型を `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更 (HTTP schema 非依存、author は service 層 filter として残す)。Pagination component の partial reload key は Home と共通 (`["articles", "articlesCount", "query"]`)、profile 自体は再評価 skip
-- [x] **Comments**: schema (`comments` テーブル + migration 0004) + Add (`POST /articles/:slug/comments`) + Delete (`DELETE /articles/:slug/comments/:id`)。Show route で `getArticleBySlug + listComments` を `Promise.all` 並行呼出、author は `userRepo.findByIds` で bulk 解決 (articles と同じ pattern、relations 未使用維持)。`CommentView` に `isAuthor` flag を持たせて自分の comment にのみ Delete ボタン表示。CommentForm + CommentList は Show.tsx 内に inline (1 page 専用、別 component file は YAGNI)。未ログインは Sign in prompt で form 非表示。delete 時は service で `comment.articleId === article.id` を検証 (URL 改竄で他記事の comment を消されるのを防ぐ)
+- [x] **Comments**: schema (`comments` テーブル + migration 0004) + Add (`POST /articles/:slug/comments`) + Delete (`DELETE /articles/:slug/comments/:id`)。Show route で `getArticleBySlug + listComments` を `Promise.all` 並行呼出、author は `userRepo.findByIds` で bulk 解決 (articles と同じ pattern、relations 未使用維持)。「自分の comment か」は `useAuth().user?.username === comment.author.username` で client 側判定 (server に viewerId 持ち込まない)。CommentForm + CommentList は Show.tsx 内に inline (1 page 専用、別 component file は YAGNI)。未ログインは Sign in prompt で form 非表示。delete 時は service で `comment.articleId === article.id` を検証 (URL 改竄で他記事の comment を消されるのを防ぐ)
 
 ### 残タスク (RealWorld spec 順)
 
@@ -209,6 +209,7 @@ docs/
 - **Comments の URL は spec 準拠で nested、GET は Show と統合** (2026-05-05): RealWorld spec の comment endpoint は `POST/GET/DELETE /articles/:slug/comments[/...]`。Inertia 化で GET (一覧取得) は不要に — Show route で article と一緒に load して Show page に inline 表示する方が自然。残るは POST (追加) と DELETE (削除) の 2 つ。slug を URL に含めるのは spec のまま (既に article scope の URL なので)、削除時は service で `comment.articleId === article.id` を検証して URL 改竄 (`/articles/foo/comments/<bar 記事の comment id>`) を弾く
 - **Comments の load は Show route で Promise.all 並走** (2026-05-05): Profile route の `getProfile + listArticles` と同じ pattern。article + comments は別 feature (articles と comments) なので service 層では混ぜず、route で orchestrate。1 page = 複数 service という構造が定着 (Home / Profile / Article Show が同形)
 - **CommentForm + CommentList は Show.tsx 内に inline** (2026-05-05): 別 component file (`CommentForm.tsx` / `CommentList.tsx`) に切り出さず、Show.tsx 内に function component として並べる。理由: (1) この 2 つは Article Show page でしか使わない (再利用予定なし)、(2) ファイル分割すると props 型 (slug / comments) を export し直す boilerplate が増える、(3) Show.tsx 全体で 130 行程度なら同居して読める。再利用機会が出たら切り出す (YAGNI)
+- **comment の `isAuthor` は client 側判定 (server に viewerId 持ち込まない)** (2026-05-05): 当初 server で `toCommentView(comment, author, viewerId)` で `isAuthor` flag を計算して view に載せていたが、refactor で撤去。理由は (1) Comments の `isAuthor` は単に「自分の comment に Delete ボタン出すか」だけで viewer 文脈の関係性 (favorited / following のような DB lookup 必要なもの) ではない、(2) `useAuth().user?.username === comment.author.username` で client 側 1 行判定できる (username は unique 制約)、(3) **配列**の各 item に flag を振るより client で `useAuth()` 1 回参照する方が単純。article の `isAuthor` は 1 件 + page props のトップレベルなので server 計算が自然 (route で `c.var.userId` 直接使える)。**使い分け**: 1 件の page props は server、配列の each は client、viewer 文脈の関係 (follow/favorite) は server 必須
 - **comment 削除認可は service で二重検証** (2026-05-05): `deleteComment(db, slug, commentId, viewerId)` で (a) slug → article 存在確認、(b) commentId → comment 存在 + `comment.articleId === article.id` 整合確認、(c) `comment.authorId === viewerId` 認可、の 3 段。(b) は URL 改竄 (`/articles/foo/comments/123` で 123 が別記事の comment) 対策、(c) は他人の comment を消されない対策。UI からは isAuthor=false で Delete ボタン非表示なので通常到達不可、API 直叩き対策 (self-follow と同じ二重防止のメンタルモデル)
 - **comment author の bulk 解決は articles と同じ pattern** (2026-05-05): `listByArticleId` で comments を取得 → 一意 authorId を抽出 → `userRepo.findByIds` で bulk 取得 → Map で紐付け。articles の `presentArticleList` と全く同じ手法。drizzle relations 入れれば `with: { author: true }` で 1 query にできるが、favorites の `?favorited=` filter で本格的に必要になるまで保留 (YAGNI)、今は手動 bulk で問題なし
 - **router.delete 後の useForm.errors 残存はハマりポイント** (2026-05-05): comment 投稿で validation error → 「body is required」が出てる状態で comment 削除 (`router.delete`) すると、削除成功後も「body is required」表示が残る。useForm の errors は `usePage().props.errors` の auto-merge で更新されるが、`router.delete` は useForm を経由しないので前の form errors が clear されない。実用上は次の投稿試行で上書きされるので許容 — Inertia の標準挙動で hono-ir 側の問題ではない。気になるなら `router.delete(..., { onSuccess: () => form.clearErrors() })` の手段あり
@@ -248,8 +249,9 @@ docs/
 - **未ログイン UX**: `useAuth().user` が null なら CommentForm 非表示で `Sign in to add comments.` link を出す。CommentList は閲覧可
 
 途中の判断:
-- 別 user 作って「他人の comment では Delete ボタン非表示」を Playwright で検証するか迷ったが、isAuthor flag は articles と同じシンプルな実装で article 側で動作確認済み → 時間 vs 網羅性のトレードオフで省略
+- 別 user 作って「他人の comment では Delete ボタン非表示」を Playwright で検証するか迷ったが、isAuthor flag は username 比較のシンプル実装で article 側で動作確認済み → 時間 vs 網羅性のトレードオフで省略
 - `router.delete` 後に直前の form validation error が残るハマりポイントを発見、判断記録に追加 (Inertia 標準挙動)
+- 初回実装で `CommentView` に `isAuthor` flag (server 計算) を載せていたが、あさひさんの指摘 (「viewer 文脈の関係じゃないなら client 判定でよくない？」) で撤去 → server に viewerId 持ち込まない形にリファクタ。article isAuthor を server 計算してたから揃えただけの over-engineering だった
 
 ### 次セッション最初の一手
 
