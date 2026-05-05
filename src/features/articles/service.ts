@@ -95,9 +95,10 @@ export async function deleteArticle(db: Db, slug: string, viewerId: number) {
 
 // 一覧 (Global Feed) の orchestration。
 // list 系はエラー variant 不要 (filter 不一致 = 空配列で正常終了) なので tagged union 使わない
+// author は service 層の filter 引数。HTTP schema には乗らない (Profile route 経由でのみ渡る)
 export async function listArticles(
   db: Db,
-  query: Pick<ArticlesQuery, "limit" | "offset" | "author">,
+  query: Pick<ArticlesQuery, "limit" | "offset"> & { author?: string },
 ) {
   const { limit, offset, author } = query;
   const conditions: SQL[] = [];

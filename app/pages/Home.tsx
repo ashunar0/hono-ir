@@ -21,7 +21,6 @@ function buildHomeHref(q: ArticlesQuery) {
   if (q.tab !== "global") sp.set("tab", q.tab);
   if (q.offset > 0) sp.set("offset", String(q.offset));
   if (q.limit !== 10) sp.set("limit", String(q.limit));
-  if (q.author) sp.set("author", q.author);
   const qs = sp.toString();
   return qs ? `/?${qs}` : "/";
 }
@@ -79,12 +78,7 @@ export default function Home({ query, articles, articlesCount }: HomeProps) {
         </Link>
         {user && (
           <Link
-            href={buildHomeHref({
-              ...query,
-              tab: "feed",
-              offset: 0,
-              author: undefined,
-            })}
+            href={buildHomeHref({ ...query, tab: "feed", offset: 0 })}
             only={[...PARTIAL_KEYS]}
             preserveScroll
             style={{
@@ -97,18 +91,6 @@ export default function Home({ query, articles, articlesCount }: HomeProps) {
           >
             Your Feed
           </Link>
-        )}
-
-        {query.author && query.tab === "global" && (
-          <span
-            style={{
-              padding: "0.25rem 0.75rem",
-              fontWeight: "bold",
-              borderBottom: "2px solid #333",
-            }}
-          >
-            @{query.author}
-          </span>
         )}
       </nav>
 

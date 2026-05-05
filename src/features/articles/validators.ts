@@ -19,11 +19,19 @@ export type UpdateArticleRequest = z.infer<typeof updateArticleSchema>;
 
 // 一覧 query: limit/offset は URL query なので coerce で number 化
 // limit は 1..100 でクランプ (RealWorld spec のデフォルト 20)、offset は 0 以上
+// Home 用 schema。author filter は Home の URL 動線では受けない (Profile が出口)
 export const articlesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   offset: z.coerce.number().int().min(0).default(0),
-  author: z.string().trim().min(1).optional(),
   tab: z.enum(["global", "feed"]).default("global"),
 });
 
 export type ArticlesQuery = z.infer<typeof articlesQuerySchema>;
+
+// Profile page の記事一覧 query。pagination のみ
+export const profileArticlesQuerySchema = articlesQuerySchema.pick({
+  limit: true,
+  offset: true,
+});
+
+export type ProfileArticlesQuery = z.infer<typeof profileArticlesQuerySchema>;

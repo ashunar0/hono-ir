@@ -2,6 +2,9 @@ import { Hono } from "hono";
 import { createDb } from "../../db/client";
 import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
+import { validateQuery } from "../../middleware/validator";
+import { listArticles } from "../articles/service";
+import { profileArticlesQuerySchema } from "../articles/validators";
 import { followUser, getProfile, unfollowUser } from "./service";
 import { toProfileView } from "./view";
 
@@ -13,19 +16,30 @@ type Env = {
 
 const app = new Hono<Env>()
   .basePath("/profiles/:username")
-  // プロフィール表示
-  .get("/", async (c) => {
-    const result = await getProfile(
-      createDb(c.env.DB),
-      c.var.userId,
-      c.req.param("username"),
-    );
+  // プロフィール表示 + その user の記事一覧 (Conduit / Zenn 流に Profile = user hub)
+  .get("/", validateQuery(profileArticlesQuerySchema), async (c) => {
+    const username = c.req.param("username");
+    const query = c.req.valid("query");
+    const db = createDb(c.env.DB);
+    const userId = c.var.userId;
 
-    if (result.kind === "not_found") return c.notFound();
+    const [profileResult, articleResult] = await Promise.all([
+      getProfile(db, userId, username),
+      listArticles(db, { ...query, author: username }),
+    ]);
 
-    const isSelf = c.var.userId === result.user.id;
+    if (profileResult.kind === "not_found") return c.notFound();
+
+    const isSelf = userId === profileResult.user.id;
     return c.render("Profiles/Show", {
-      profile: toProfileView(result.user, result.isFollowing, isSelf),
+      profile: toProfileView(
+        profileResult.user,
+        profileResult.isFollowing,
+        isSelf,
+      ),
+      query,
+      articles: articleResult.articles,
+      articlesCount: articleResult.articlesCount,
     });
   })
   // フォロー

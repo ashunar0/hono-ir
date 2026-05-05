@@ -1,11 +1,33 @@
 import { Link, router } from "@inertiajs/react";
+import type { ArticleListView } from "../../../src/features/articles/view";
+import type { ProfileArticlesQuery } from "../../../src/features/articles/validators";
 import type { ProfileView } from "../../../src/features/profiles/view";
+import { ArticleCard } from "../../components/ArticleCard";
 import { FlashMessages } from "../../components/FlashMessages";
+import { Pagination } from "../../components/Pagination";
 import { useAuth } from "../../lib/use-auth";
 
-type Props = { profile: ProfileView };
+type Props = {
+  profile: ProfileView;
+  query: ProfileArticlesQuery;
+  articles: ArticleListView[];
+  articlesCount: number;
+};
 
-export default function Show({ profile }: Props) {
+function buildProfileHref(username: string, q: ProfileArticlesQuery) {
+  const sp = new URLSearchParams();
+  if (q.offset > 0) sp.set("offset", String(q.offset));
+  if (q.limit !== 10) sp.set("limit", String(q.limit));
+  const qs = sp.toString();
+  return qs ? `/profiles/${username}?${qs}` : `/profiles/${username}`;
+}
+
+export default function Show({
+  profile,
+  query,
+  articles,
+  articlesCount,
+}: Props) {
   const { user } = useAuth();
   const isLoggedIn = user !== null;
 
@@ -53,6 +75,27 @@ export default function Show({ profile }: Props) {
           </p>
         )}
       </article>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Articles</h2>
+        {articles.length === 0 ? (
+          <p style={{ color: "#888" }}>No articles are here... yet.</p>
+        ) : (
+          articles.map((article) => (
+            <ArticleCard key={article.slug} article={article} />
+          ))
+        )}
+
+        <Pagination
+          total={articlesCount}
+          limit={query.limit}
+          offset={query.offset}
+          buildHref={(newOffset) =>
+            buildProfileHref(profile.username, { ...query, offset: newOffset })
+          }
+        />
+      </section>
+
       <p style={{ marginTop: "2rem" }}>
         <Link href="/">← Home</Link>
       </p>
