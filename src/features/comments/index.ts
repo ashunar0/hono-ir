@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
-import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { addComment, deleteComment } from "./service";
@@ -13,7 +12,7 @@ type Env = {
 };
 
 const app = new Hono<Env>()
-  // comment 追加
+  // comment 追加 (Article Show の form から呼ばれるので Referer = Show)
   .post(
     "/articles/:slug/comments",
     requireAuth,
@@ -29,8 +28,10 @@ const app = new Hono<Env>()
 
       if (result.kind === "article_not_found") return c.notFound();
 
-      setFlash(c, { success: "コメントを投稿しました" });
-      return c.redirect(`/articles/${slug}`, 303);
+      return c.back({
+        flash: { success: "コメントを投稿しました" },
+        fallback: `/articles/${slug}`,
+      });
     },
   )
   // comment 削除
@@ -49,12 +50,16 @@ const app = new Hono<Env>()
 
     if (result.kind === "not_found") return c.notFound();
     if (result.kind === "forbidden") {
-      setFlash(c, { error: "削除権限がありません" });
-      return c.redirect(`/articles/${slug}`, 303);
+      return c.back({
+        flash: { error: "削除権限がありません" },
+        fallback: `/articles/${slug}`,
+      });
     }
 
-    setFlash(c, { success: "コメントを削除しました" });
-    return c.redirect(`/articles/${slug}`, 303);
+    return c.back({
+      flash: { success: "コメントを削除しました" },
+      fallback: `/articles/${slug}`,
+    });
   });
 
 export default app;

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
-import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
 import { validateQuery } from "../../middleware/validator";
 import { listArticles } from "../articles/service";
@@ -51,7 +50,7 @@ const app = new Hono<Env>()
       articlesCount: articleResult.articlesCount,
     });
   })
-  // フォロー
+  // フォロー (将来 Article Show 等の他 page から呼ばれても referer に戻れるよう c.back)
   .post("/follow", requireAuth, async (c) => {
     const username = c.req.param("username");
     const result = await followUser(createDb(c.env.DB), c.var.userId, username);
@@ -61,8 +60,9 @@ const app = new Hono<Env>()
       return c.back({ flash: { error: "自分自身はフォローできません" } });
     }
 
-    setFlash(c, { success: `@${username} さんをフォローしました` });
-    return c.redirect(`/profiles/${username}`, 303);
+    return c.back({
+      flash: { success: `@${username} さんをフォローしました` },
+    });
   })
   // フォロー解除
   .delete("/follow", requireAuth, async (c) => {
@@ -75,8 +75,9 @@ const app = new Hono<Env>()
 
     if (result.kind === "not_found") return c.notFound();
 
-    setFlash(c, { success: `@${username} さんのフォローを解除しました` });
-    return c.redirect(`/profiles/${username}`, 303);
+    return c.back({
+      flash: { success: `@${username} さんのフォローを解除しました` },
+    });
   });
 
 export default app;
