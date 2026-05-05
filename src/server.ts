@@ -6,6 +6,7 @@ import { feedArticles, listArticles } from "./features/articles/service";
 import { articlesQuerySchema } from "./features/articles/validators";
 import auth from "./features/auth";
 import { resolveAuthUser } from "./features/auth/service";
+import comments from "./features/comments";
 import profiles from "./features/profiles";
 import users from "./features/users";
 import { consumeFlash } from "./lib/flash";
@@ -64,7 +65,8 @@ const routes = app
   .route("/", auth)
   .route("/", users)
   .route("/", profiles)
-  .route("/", articles);
+  .route("/", articles)
+  .route("/", comments);
 
 export default routes;
 export type AppType = typeof routes;

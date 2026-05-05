@@ -3,6 +3,7 @@ import { createDb } from "../../db/client";
 import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
+import { listComments } from "../comments/service";
 import {
   createArticle,
   deleteArticle,
@@ -95,18 +96,27 @@ const app = new Hono<Env>()
     setFlash(c, { success: "記事を削除しました" });
     return c.redirect("/", 303);
   })
-  // 記事表示
+  // 記事表示 (article + comments を並行 load)
   .get("/articles/:slug", async (c) => {
-    const result = await getArticleBySlug(
-      createDb(c.env.DB),
-      c.req.param("slug"),
-    );
+    const db = createDb(c.env.DB);
+    const slug = c.req.param("slug");
+    const viewerId = c.var.userId;
 
-    if (result.kind === "not_found") return c.notFound();
+    const [articleResult, commentsResult] = await Promise.all([
+      getArticleBySlug(db, slug),
+      listComments(db, slug, viewerId),
+    ]);
+
+    if (articleResult.kind === "not_found") return c.notFound();
+    // listComments は同じ slug を引いているので article_not_found には来ない想定
+    const comments =
+      commentsResult.kind === "ok" ? commentsResult.comments : [];
 
     return c.render("Articles/Show", {
-      article: toArticleView(result.article, result.author),
-      isAuthor: c.var.userId !== undefined && result.article.authorId === c.var.userId,
+      article: toArticleView(articleResult.article, articleResult.author),
+      isAuthor:
+        viewerId !== undefined && articleResult.article.authorId === viewerId,
+      comments,
     });
   });
 

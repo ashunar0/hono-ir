@@ -29,6 +29,13 @@
       "when": 1777896414555,
       "tag": "0003_flowery_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777978488588,
+      "tag": "0004_lowly_gravity",
+      "breakpoints": true
     }
   ]
 }
