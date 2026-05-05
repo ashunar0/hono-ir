@@ -62,6 +62,10 @@ src/
       repository.ts    # commentRepo (listByArticleId / findById / create / delete)
       service.ts       # addComment / listComments / deleteComment + author を bulk 解決して N+1 回避
       view.ts          # CommentView 型 + toCommentView (viewer 文脈は持ち込まない、isAuthor は client で判定)
+    favorites/         # いいね feature (user × article の関係、follows と同形の独立 feature)
+      index.ts         # Hono sub-app (POST /articles/:slug/favorite + DELETE /articles/:slug/favorite、c.back で referer 戻し)
+      repository.ts    # favoriteRepo (exists / favoritedArticleIdsIn (bulk Set) / countByArticleId / countByArticleIds (bulk Map) / create / delete / findArticleIdsFavoritedBy)
+      service.ts       # favoriteArticle / unfavoriteArticle + resolveFavoriteContext (一覧用 bulk: Set + Map) / resolveFavoriteFor (1 件用)
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -84,10 +88,11 @@ app/
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
     Articles/New.tsx   # 記事新規作成 form (useForm flat)
     Articles/Show.tsx  # 記事表示 + Comments セクション (CommentForm + CommentList を inline、未ログインは Sign in prompt)
-    Profiles/Show.tsx  # プロフィール表示 + その user の記事一覧 + Pagination (Follow/Unfollow ボタン、isSelf 時は "This is your profile.")
+    Profiles/Show.tsx  # プロフィール表示 + タブ (My Articles / Favorited Articles) + 記事一覧 + Pagination
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
-    ArticleCard.tsx    # 記事 1 行表示 (一覧用)、ArticleListView を受け取る
+    ArticleCard.tsx    # 記事 1 行表示 (一覧用、FavoriteButton 内蔵)、ArticleListView を受け取る
+    FavoriteButton.tsx # ♡/♥ + count の Toggle ボタン、未ログインは static span、partial reload key を only prop で受ける
     Pagination.tsx     # offset/limit 用ページ番号 UI、Inertia の `<Link only={...} preserveScroll>` で partial reload 連動
   lib/
     use-auth.ts        # useAuth() hook (型付き shared data アクセス)
@@ -138,7 +143,7 @@ docs/
 - main 直 push（個人開発）
 - Conventional Commits、日本語、例: `feat(auth): ...`, `refactor(lib): ...`
 
-## 実装状況 (2026-05-05 時点、Comments まで)
+## 実装状況 (2026-05-05 時点、Favorites まで)
 
 ### 完了
 
@@ -165,11 +170,11 @@ docs/
 - [x] **Articles List/Feed + Pagination**: Home (`GET /`) を Global Feed / Your Feed タブ + pagination (1 ページ 10 件) 対応に。`articlesQuerySchema` (limit/offset/tab) で List/Feed を 1 schema に統合。author は `userRepo.findByIds` で bulk 解決して N+1 回避 (drizzle relations 未使用)、`ArticleListView` (body 抜き) で list response 帯域節約。未 login で `?tab=feed` → `/login` redirect。page props は `{ query, articles, articlesCount }` の Grouped 構造、partial reload の `only` も `["articles", "articlesCount", "query"]` の 3 keys に短縮 → sharedData の `auth` / `flash` closure は評価 skip
 - [x] **Profile に記事一覧統合**: Profile (`/profiles/:username`) が user hub。bio + Follow + 記事一覧 + Pagination が 1 page に集約。`articlesQuerySchema` から `author` を削除 (Home の `?author=` URL filter 廃止)、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})` で Profile 用に derive。Profile route で `getProfile + listArticles` を `Promise.all` 並行呼出。`listArticles` 入力型を `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更 (HTTP schema 非依存、author は service 層 filter として残す)。Pagination component の partial reload key は Home と共通 (`["articles", "articlesCount", "query"]`)、profile 自体は再評価 skip
 - [x] **Comments**: schema (`comments` テーブル + migration 0004) + Add (`POST /articles/:slug/comments`) + Delete (`DELETE /articles/:slug/comments/:id`)。Show route で `getArticleBySlug + listComments` を `Promise.all` 並行呼出、author は `userRepo.findByIds` で bulk 解決 (articles と同じ pattern、relations 未使用維持)。「自分の comment か」は `useAuth().user?.username === comment.author.username` で client 側判定 (server に viewerId 持ち込まない)。CommentForm + CommentList は Show.tsx 内に inline (1 page 専用、別 component file は YAGNI)。未ログインは Sign in prompt で form 非表示。delete 時は service で `comment.articleId === article.id` を検証 (URL 改竄で他記事の comment を消されるのを防ぐ)
+- [x] **Favorites**: schema (`favorites` テーブル + migration 0005、composite PK + 両 cascade) + `features/favorites/` 独立 feature (follows と同形)。ArticleView / ArticleListView に `favoritesCount` + `favorited` を追加、一覧では `resolveFavoriteContext(db, viewerId, articleIds)` で count Map と viewer の favorited Set を bulk 解決 (drizzle relations 未使用、手動 bulk 維持)、Show では `resolveFavoriteFor(db, viewerId, articleId)` で 1 件解決。`POST/DELETE /articles/:slug/favorite` は `c.back()` で referer に戻す (Home / Profile / Show どこから押しても同じ動作)。FavoriteButton は共通 component で partial reload key を `only` prop で受ける (一覧 = `["articles", "articlesCount", "query"]` / Show = `["article"]`)。未ログインは static span (count 表示のみ)。Profile に `?tab=my|favorited` のタブ追加、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset}).extend({tab: ...})` で extend、profiles route で tab に応じて `listArticles` の filter を `{author: username}` ↔ `{favorited: username}` で切替
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Favorites** (favoritesCount / favorited / `?favorited=` filter / Favorite ボタン)
-2. **Tags** (tagList / `?tag=` filter / タグクラウド)
+1. **Tags** (tagList / `?tag=` filter / タグクラウド)
 
 ### リファクタ候補
 
@@ -213,6 +218,15 @@ docs/
 - **comment 削除認可は service で二重検証** (2026-05-05): `deleteComment(db, slug, commentId, viewerId)` で (a) slug → article 存在確認、(b) commentId → comment 存在 + `comment.articleId === article.id` 整合確認、(c) `comment.authorId === viewerId` 認可、の 3 段。(b) は URL 改竄 (`/articles/foo/comments/123` で 123 が別記事の comment) 対策、(c) は他人の comment を消されない対策。UI からは isAuthor=false で Delete ボタン非表示なので通常到達不可、API 直叩き対策 (self-follow と同じ二重防止のメンタルモデル)
 - **comment author の bulk 解決は articles と同じ pattern** (2026-05-05): `listByArticleId` で comments を取得 → 一意 authorId を抽出 → `userRepo.findByIds` で bulk 取得 → Map で紐付け。articles の `presentArticleList` と全く同じ手法。drizzle relations 入れれば `with: { author: true }` で 1 query にできるが、favorites の `?favorited=` filter で本格的に必要になるまで保留 (YAGNI)、今は手動 bulk で問題なし
 - **router.delete 後の useForm.errors 残存はハマりポイント** (2026-05-05): comment 投稿で validation error → 「body is required」が出てる状態で comment 削除 (`router.delete`) すると、削除成功後も「body is required」表示が残る。useForm の errors は `usePage().props.errors` の auto-merge で更新されるが、`router.delete` は useForm を経由しないので前の form errors が clear されない。実用上は次の投稿試行で上書きされるので許容 — Inertia の標準挙動で hono-ir 側の問題ではない。気になるなら `router.delete(..., { onSuccess: () => form.clearErrors() })` の手段あり
+- **favorites は独立 feature (follows と同形)** (2026-05-05): 前回 (Hono-only) は articles repo に favorite 系 method を集約していたが、hono-ir では `features/favorites/` に切り出し。理由: (1) follows を独立 feature にした先例 (resolveIsFollowing が広く使われる)、(2) favorites も「user × article の関係」で本質的に独立、(3) articles → favorites の依存方向は単方向 (favorites は article ID しか触らない)。articles service が `resolveFavoriteContext` / `resolveFavoriteFor` を呼ぶ形で双方向にせず単方向 (articles → favorites) のまま
+- **drizzle relations は今回も入れず手動 bulk** (2026-05-05): Favorites 実装が「relations 入れるタイミング」と前から決めていたが、実際やってみると `favoriteRepo.countByArticleIds(ids) → Map<articleId, count>` と `favoritedArticleIdsIn(userId, ids) → Set<articleId>` の 2 つを `Promise.all` で取れば手動 bulk で十分綺麗に書けた。前回の `with: { favoritedBy: true }` (eager load → in-memory `length` + `some`) と DB hit 数は同じ (count 集計と存在確認で 2 query / 一覧 1 query で計 3 query)、コード量も同等。relations 導入は **将来 author の followers eager load 等で 3 階層深い join が出たタイミング** まで保留に切り替え (YAGNI)
+- **favoritesCount は都度集計、denormalize しない** (2026-05-05): articles テーブルに `favoritesCount` 列を追加して INSERT/DELETE 時に `+1/-1` する手法 (denormalize) は採らず、都度 `count(*) GROUP BY article_id` で集計。理由: (1) 個人開発レベルで N が小さく D1 の集計コストは無視できる、(2) denormalize は trigger or transaction 必須で SQLite/D1 の制約と相性が悪い、(3) 整合性が崩れた時のリカバリが面倒。スケール時に必要になったら考える
+- **viewer 文脈の関係性 helper は service に置く (resolveFavoriteContext / resolveFavoriteFor)** (2026-05-05): `follows` の `resolveIsFollowing` と同じ位置付け。article view を作る側 (articles service) が favorites の内部 API を直接叩くのではなく、「favorites feature が viewer 文脈の集計を返す」I/F を経由する。これで favorites 内部の実装 (eager load / bulk / denormalize) を変えても articles service は無変更。`Context` という命名は「viewer に紐付く文脈情報」という意味で、count + favorited Set を 1 つの戻り値にまとめる包括名
+- **listArticles の入力型に viewerId を分離 (2 引数)、HTTP schema には乗せない** (2026-05-05): `listArticles(db, query, viewerId)` の 3 引数構造。`favorited` filter は service 引数 (Profile からのみ渡す)、`viewerId` は viewer 文脈用の独立引数。HTTP query (`articlesQuerySchema`) には載せない (`viewer` は cookie session 由来、`favorited` は Profile route の URL `:username` から渡す)。layer 分離: HTTP query / service filter / viewer context は別の責務
+- **Profile タブの URL は `?tab=my|favorited`** (2026-05-05): Home の `?tab=global|feed` と consistency 取って query 形に。Conduit の sub-path (`/profiles/:username/favorites`) は採用せず。理由: (1) hono-ir の Home が既に `?tab=` で tab を扱ってる、(2) `profileArticlesQuerySchema` が pagination + tab を 1 schema にまとめられる、(3) tab 切替は partial reload (`only=["articles","articlesCount","query"]`) で profile データを再評価せず軽い。`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset}).extend({tab: ...})` で derive
+- **Favorite 操作は flash 通知無し、c.back のみ** (2026-05-05): favorite/unfavorite は Twitter の like のような silent toggle が UX 期待値。flash 通知 (「お気に入りに追加しました」等) は逆にうるさい。`c.back()` で referer に戻すだけ、partial reload (client 側 `only`) で count + 色だけ即時反映。signup / article create のような **state を作る操作** には flash success、favorite のような **状態の toggle** には flash 無しの使い分け
+- **partial reload key は使い場所ごとに違うので prop で受ける** (2026-05-05): FavoriteButton は ArticleCard (一覧) と Article Show (1 件) 両方で使うが、partial reload で取り直すべき key が違う (一覧 = `["articles", "articlesCount", "query"]`、Show = `["article"]`)。component 内に hardcode せず `only: string[]` を prop で受ける形に。Pagination component は使い場所が一覧のみなので hardcode で OK、対称性が壊れるが実態に合わせる
+- **inline style での border shorthand と borderColor の混在は React warning** (2026-05-05): FavoriteButton で `baseStyle: { border: "1px solid #ccc" }` + `activeStyle: { ...baseStyle, borderColor: "#e57373" }` という形にしたら React が `Removing borderColor border` warning を出した (shorthand `border` と long-hand `borderColor` の混在は再 render 時に conflict する)。`border` を `borderWidth` / `borderStyle` / `borderColor` の 3 つに分解して解消。Inertia 化のような CSR 文脈で React 19 が厳しめに警告するパターン
 
 その後 (大物):
 
@@ -225,56 +239,64 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: 直前の `a5701f2 docs: Profile 記事一覧統合に合わせて引き継ぎメモを更新` の上に `feat(comments): ...` が乗る予定 (これから commit)
+- main: 直前の comments 4 commits の上に `feat(favorites)` + `docs` が乗る予定 (これから commit)。push は溜まったまま
 - typecheck / build / Playwright 動作確認 全 OK:
-  - Article Show (`/articles/test-article-1`): comment 投稿 → 表示 → flash success → 削除 → No comments yet 復帰
-  - 空 body submit: `body is required` validation エラー (Inertia 流 redirect-back + useForm.errors マージ)
-  - 未ログイン: CommentForm 非表示、`Sign in to add comments.` prompt 表示
-  - 自分の comment にのみ Delete ボタン (article isAuthor と同 pattern)
-- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456` (前セッションと同じ。引き継ぎメモが email 間違ってたので訂正済み)。記事 13 件 (前セッションの seed): `Hello World` + `Test Article 1〜12`、全 author = user 12。comments テーブルは動作確認後 0 件 (削除済み)
+  - Home: 各 ArticleCard に `♡ count` ボタン、login 済みで toggle (♥ active 表示) + count 増減、partial reload (`["articles","articlesCount","query"]`) で再評価
+  - Article Show: 同 FavoriteButton 配置、partial reload (`["article"]`) で article のみ再評価
+  - Profile タブ: My Articles / Favorited Articles 切替 OK (`?tab=favorited`)、tab 切替時 offset リセット、Pagination も連動
+  - 未ログイン: `<button>` ではなく static `<span>` で count のみ表示、クリック不可
+- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456` (前セッションと同じ)。記事 13 件、favorites は user 12 が `Test Article 1` を 1 件 favorite した状態 (動作確認の残骸)
 - dev server は止めた
 
-### 今日 (2026-05-05、Comments) やったこと
+### 今日 (2026-05-05、Favorites) やったこと
 
-選択肢 A (Comments) を片付け。1 commit 予定:
+前回 (Hono-only) との **対照実験** で進めた。骨格は流用しつつ、hono-ir の規約に合わせて以下を変更:
 
-- `feat(comments): 記事へのコメント機能を追加` (これから commit)
+- **favorites を独立 feature 化** (前回は articles repo に集約、今回は `features/favorites/` 切り出し → follows と同形)
+- **drizzle relations は今回も未使用、手動 bulk 維持** (`countByArticleIds` Map + `favoritedArticleIdsIn` Set を `Promise.all` で取って articles service に渡す)
+- **Inertia 流 silent toggle** (`c.back()` だけで flash 通知無し、partial reload で UI 即時反映)
+- **Profile タブ UI** (`?tab=my|favorited`) がここで初登場、tab 切替は `<Link only={...} preserveScroll>`
+- **FavoriteButton 共通 component** (`only` prop で page ごとに partial reload key 注入)
+- **viewer 文脈 helper を service に集約** (`resolveFavoriteContext` / `resolveFavoriteFor` で count + favorited を 1 つの戻り値に、follows の `resolveIsFollowing` と同位置)
 
-ポイント (Comments):
-- **schema 0004**: `comments` (id / body / articleId / authorId / createdAt / updatedAt)。articleId は ON DELETE CASCADE (記事削除で comment も自動削除)、authorId は ON DELETE 指定なし = articles と consistency (user 削除機能無いので restrict で OK)
-- **feature 一式新規**: `features/comments/` に validators / repository / service / view / index を articles と同形で作成。DB 操作は repository、orchestration (slug → article 解決 → comment 操作) は service、HTTP は index に分離
-- **Show route で article + comments を Promise.all 並走**: Profile route の `getProfile + listArticles` と同じ pattern。`getArticleBySlug + listComments` で並列 load → page props に `comments` 追加。N+1 回避は articles と同じ手動 bulk (drizzle relations 未使用維持)
-- **CommentForm + CommentList は Show.tsx に inline**: 別 component file 化せず Show.tsx 内に function component として並置 (1 page 専用、再利用なし、YAGNI)
-- **comment 削除は service で 3 段検証**: (a) article 存在 (b) comment 存在 + articleId 整合 (URL 改竄対策) (c) authorId 一致 (認可)。UI からは isAuthor=false で Delete ボタン非表示、API 直叩き対策で二重防止 (self-follow と同じメンタルモデル)
-- **未ログイン UX**: `useAuth().user` が null なら CommentForm 非表示で `Sign in to add comments.` link を出す。CommentList は閲覧可
+判断記録に新たに追加した項目:
+- favorites は独立 feature
+- drizzle relations は引き続き保留 (手動 bulk で十分綺麗だった、想定より差が出なかった)
+- favoritesCount は都度集計、denormalize しない
+- viewer 文脈 helper は service の `resolveXxxContext / resolveXxxFor` 命名規約
+- listArticles の入力型は HTTP schema / service filter / viewer context の 3 layer 分離
+- Profile タブは `?tab=` 形 (Home の `?tab=global|feed` と consistency)
+- favorite は flash 通知無し (silent toggle の UX、state を作る操作と toggle を区別)
+- partial reload key は prop で受ける (使い場所差異がある component の場合)
+- React 19 の border shorthand 警告ハマり (border / borderColor 混在 → 3 long-hand に分解)
 
 途中の判断:
-- 別 user 作って「他人の comment では Delete ボタン非表示」を Playwright で検証するか迷ったが、isAuthor flag は username 比較のシンプル実装で article 側で動作確認済み → 時間 vs 網羅性のトレードオフで省略
-- `router.delete` 後に直前の form validation error が残るハマりポイントを発見、判断記録に追加 (Inertia 標準挙動)
-- 初回実装で `CommentView` に `isAuthor` flag (server 計算) を載せていたが、あさひさんの指摘 (「viewer 文脈の関係じゃないなら client 判定でよくない？」) で撤去 → server に viewerId 持ち込まない形にリファクタ。article isAuthor を server 計算してたから揃えただけの over-engineering だった
+- 当初 favoriteArticle / unfavoriteArticle で `c.back()` だけにしていたが、これは Inertia の silent toggle 流派で「flash 無しが UX 上正しい」と判断
+- favorite ボタンを ArticleCard と Show で共通化するか、それぞれ inline で書くかで一瞬迷ったが、partial reload key が page で違うので **共通 component + only prop** に着地
 
 ### 次セッション最初の一手
 
 選択肢:
 
-**A. Favorites**
-- 残タスク #1
-- schema: `favorites` テーブル (userId / articleId、composite PK or unique)。articles の view layer に `favoritesCount` / `favorited` を join
-- UI: Favorite ボタン (Article Show / ArticleCard 双方)、Profile に "Favorited Articles" タブ追加 → ようやくタブ UI が活きる
-- N+1 回避が複雑化する分岐点。drizzle relations を本格的に入れるかの判断ポイント (Q1: relations vs 手動 bulk、Q2: count を articles テーブル denormalize vs query 都度集計)。comments と違って articles 一覧 / Profile / Show 全部に joining が要るので影響範囲広め
+**A. Tags**
+- 残タスク #1 (RealWorld spec の最後の機能)
+- schema: `tags` (id / name unique) + `article_tags` (articleId / tagId, composite PK、両 cascade)
+- 記事 create / update で tag を upsert + link 集約 (前回の `replaceArticleTags` パターン踏襲)
+- view: ArticleView / ArticleListView に `tagList: string[]` 追加、bulk 解決 (favorites と同パターン: `articleTagsByArticleIds(ids) → Map<articleId, string[]>`)
+- UI: New / Edit form に tag 入力 (CSV-like or chips UI)、ArticleCard / Show に tag 表示、Home に `?tag=` filter
+- favorites と違って **viewer 文脈なし** (誰が見ても tagList は同じ) なので簡単。Profile タブ化も無し
 
-**B. Tags**
-- 残タスク #2
-- schema: `tags` (id / name unique) + `article_tags` (articleId / tagId, composite PK)。記事 create / update 時に tag を upsert + 紐付け
-- UI: tag input (CSV-like の "react,typescript" 入力 → split)、Article Show / ArticleCard に tag 表示、Home に `?tag=` filter (タグクラウドはオプション)
-- favorites より独立度高め (記事との関係のみ、user 関係なし)。先にこっちでも筋通る
-
-**C. Phase 3: upstream PR**
+**B. Phase 3: upstream PR**
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
 - 動作確認は十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
 - 保管場所 (cookie 1 本同居 vs 別) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
-順番案: A → B (favorites のタブ化を済ませてから tags が自然) も、B → A (関係簡単な方から) もあり。C はいつでも入れられる集大成。あさひさんに選んでもらう。
+**C. リファクタ + push**
+- articles の forbidden / not_found を `c.back` 化 (3 箇所重複、未着手)
+- 404 page を Inertia 流に (`app.notFound((c) => c.render("Errors/NotFound", {}))`)
+- 累積した未 push commit を整理して push
+
+A は spec 完成、B は外部貢献、C は累積債務整理。A → B が筋 (機能完成 → 外に出す)、間に C を挟むのもあり。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
