@@ -44,7 +44,7 @@ src/
       repository.ts    # userRepo (findById / findByIds (bulk) / findByEmail / findByUsername / Excluding 系 / create / update)
     articles/          # 記事 feature
       index.ts         # Hono sub-app (routes)
-      validators.ts    # createArticleSchema / updateArticleSchema / articlesQuerySchema (List/Feed 共通、tab=global|feed の enum で統合)
+      validators.ts    # createArticleSchema / updateArticleSchema / articlesQuerySchema (Home の List/Feed 共通、tab=global|feed) / profileArticlesQuerySchema (Profile の pagination のみ、pick で derive)
       slug.ts          # generateSlug (slugify + Date.now base36 suffix)
       repository.ts    # articleRepo (factory): findBySlug / list / count / create / update / delete
       service.ts       # createArticle / getArticleBySlug / updateArticle / deleteArticle / listArticles / feedArticles + presentArticleList (author を bulk 解決して N+1 回避)
@@ -78,7 +78,7 @@ app/
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
     Articles/New.tsx   # 記事新規作成 form (useForm flat)
     Articles/Show.tsx  # 記事表示 (props 型は features/articles/view から import)
-    Profiles/Show.tsx  # プロフィール表示 (Follow/Unfollow ボタン、isSelf 時は "This is your profile.")
+    Profiles/Show.tsx  # プロフィール表示 + その user の記事一覧 + Pagination (Follow/Unfollow ボタン、isSelf 時は "This is your profile.")
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
     ArticleCard.tsx    # 記事 1 行表示 (一覧用)、ArticleListView を受け取る
@@ -132,7 +132,7 @@ docs/
 - main 直 push（個人開発）
 - Conventional Commits、日本語、例: `feat(auth): ...`, `refactor(lib): ...`
 
-## 実装状況 (2026-05-05 時点)
+## 実装状況 (2026-05-05 時点、Profile 統合まで)
 
 ### 完了
 
@@ -156,14 +156,14 @@ docs/
 - [x] **Profiles**: schema (`follows` テーブル + migration 0003) + GET / follow / unfollow。`basePath("/profiles/:username")` 採用、self-follow は service 層 (`cannot_follow_yourself` + `c.back` で flash error) と DB CHECK 制約で二重防止。Profile page は最小実装 (username + bio + image + Follow/Unfollow ボタン、自分なら "This is your profile."、未ログイン閲覧可)
 - [x] **follows feature 独立**: `features/follows/` に切り出し。`resolveIsFollowing(db, viewerId, targetId)` を共通 helper として、profile / article (将来) で再利用可能に
 - [x] **Update User** (`PUT /user`): `features/users/` を route 化、`GET /settings` (form 表示) + `PUT /user` (更新) の 2 routes。全 field optional、重複チェックは自分以外、password は変更時のみ PBKDF2 hash。validator preprocess で空文字を field 別に正規化 (email/username/password → undefined "変更しない"、bio/image → null "clear")。form は `noValidate` で HTML5 validation 無効化 → サーバ validate 一本
-- [x] **Articles List/Feed + Pagination**: Home (`GET /`) を Global Feed / Your Feed タブ + author filter + pagination (1 ページ 10 件) 対応に。`articlesQuerySchema` (limit/offset/author/tab) で List/Feed を 1 schema に統合。author は `userRepo.findByIds` で bulk 解決して N+1 回避 (drizzle relations 未使用)、`ArticleListView` (body 抜き) で list response 帯域節約。未 login で `?tab=feed` → `/login` redirect。page props は `{ query, articles, articlesCount }` の Grouped 構造、partial reload の `only` も `["articles", "articlesCount", "query"]` の 3 keys に短縮 → sharedData の `auth` / `flash` closure は評価 skip
+- [x] **Articles List/Feed + Pagination**: Home (`GET /`) を Global Feed / Your Feed タブ + pagination (1 ページ 10 件) 対応に。`articlesQuerySchema` (limit/offset/tab) で List/Feed を 1 schema に統合。author は `userRepo.findByIds` で bulk 解決して N+1 回避 (drizzle relations 未使用)、`ArticleListView` (body 抜き) で list response 帯域節約。未 login で `?tab=feed` → `/login` redirect。page props は `{ query, articles, articlesCount }` の Grouped 構造、partial reload の `only` も `["articles", "articlesCount", "query"]` の 3 keys に短縮 → sharedData の `auth` / `flash` closure は評価 skip
+- [x] **Profile に記事一覧統合**: Profile (`/profiles/:username`) が user hub。bio + Follow + 記事一覧 + Pagination が 1 page に集約。`articlesQuerySchema` から `author` を削除 (Home の `?author=` URL filter 廃止)、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})` で Profile 用に derive。Profile route で `getProfile + listArticles` を `Promise.all` 並行呼出。`listArticles` 入力型を `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更 (HTTP schema 非依存、author は service 層 filter として残す)。Pagination component の partial reload key は Home と共通 (`["articles", "articlesCount", "query"]`)、profile 自体は再評価 skip
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Profile に「My Articles」を統合**: List feature 完成済みなので、Profile page でその user の記事一覧を `?author=username` 経由で表示する。Conduit (公式 frontend) / Zenn / Qiita と同じ動線 (Profile = ユーザーのページ)。今は Home に author filter 受付ロジックがあるが UI 動線は未整備、Profile が出口
-2. **Comments**
-3. **Favorites** (favoritesCount / favorited / `?favorited=` filter / Favorite ボタン)
-4. **Tags** (tagList / `?tag=` filter / タグクラウド)
+1. **Comments**
+2. **Favorites** (favoritesCount / favorited / `?favorited=` filter / Favorite ボタン)
+3. **Tags** (tagList / `?tag=` filter / タグクラウド)
 
 ### リファクタ候補
 
@@ -196,6 +196,10 @@ docs/
 - **filter ではなく query 命名** (2026-05-05): `c.req.valid("query")` から取り出す変数名 / service 引数名を `query` に統一。`filter` だと「絞り込み条件」のニュアンスが強いが、`limit` / `offset` / `tab` は filter というより画面状態 (絞り込みではなく pagination + 表示モード)。HTTP query parameter 由来であることを示す中立名 `query` の方が筋。型名は `ArticlesQuery`、prop key も `query`、service 引数も `query` で全部揃う
 - **author filter の UI 動線は Profile 統合で持つ予定** (2026-05-05): Home に `?author=username` を URL 直叩きで渡せばフィルタは効くが、UI 上のエントリー (Home に「Author で絞り込み」みたいな form) は作っていない。Conduit / Zenn / Qiita 流に倣って **Profile page で「その user の記事一覧」が見れる** のが自然動線。これは List/Feed の延長として次の作業で対応 (Home の `query.author` 受付ロジックは Profile からの link で活かす)
 - **server.ts に articles 関連 import が増えた論点** (2026-05-05): Home route が `listArticles` / `feedArticles` / `articlesQuerySchema` を server-level で import する形に。前回 (Hono-only API) は `/articles` route が articles feature 内に閉じていてこの依存は無かった。Inertia 化で「Home page が articles を表示する」構造から派生。今は server.ts の Home route inline で OK と判断 (1 箇所のみ、6 行)。複数 page で articles を出す機会が出たら page-props 組み立て関数を feature 側に切り出す候補。**この依存は (1) と (2) のどちらか — (1) Home page の所有権を articles feature に渡す、(2) page-level の orchestration として server.ts に置く — の選択。後者で進行中**
+- **Profile = user hub、`?author=` は schema レベルで削除** (2026-05-05): GitHub / Twitter / Zenn / Qiita / Conduit の industry standard に倣い「user の URL = その人のページ = bio + 記事一覧 + Follow が 1 page」のメンタルモデルで Profile を user hub として扱う。Home の `?author=` URL filter は **schema レベルで削除** (validators.ts から `author` field 撤去) — UI entry の無い URL parameter は guessable but undocumented になり認知負荷、YAGNI で必要になったら戻せばいい。Profile 経由で同じ filter は service 層から呼ぶ (`listArticles(db, { author: username, ... })`) ので機能消失なし、URL 動線だけが Profile 一本になる
+- **Profile route は 2 service 並行呼出、profile service に統合せず** (2026-05-05): Profile page = profile + articles なので 2 つ data source が要る。選択肢は (a) `getProfile + listArticles` を route で `Promise.all` (b) `getProfileWithArticles` で 1 service にまとめる の 2 択。**(a) を採用**。理由: (1) profiles と articles は別 feature、service 層で混ぜると `profiles → articles` 依存が service 階層で発生して重い、(2) route が orchestration 責務 = まさにこの仕事、(3) 1 行 passthrough を作りたくない (規約 > YAGNI)。route から articles service を呼ぶのは Home (server.ts) と同じパターンなので統一感あり
+- **listArticles 入力型を HTTP schema 非依存に切り出し** (2026-05-05): `articlesQuerySchema` から `author` を削った副作用で、service の `Pick<ArticlesQuery, "limit" | "offset" | "author">` が成立しなくなる。**`Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更**。これは「`author` は HTTP query 由来ではなく service 層の filter 引数」という事実を型で表現した形。schema (HTTP layer) と service input (service layer) は別の責務、というレイヤ分離が型に出る
+- **Profile のタブは無し (favorites 実装まで保留)** (2026-05-05): Conduit は Profile page に "My Articles" / "Favorited Articles" タブを並べるが、favorites 未実装なので 1 タブだけのタブ UI になる → 混乱の元 + YAGNI。今は記事一覧をベタ表示、favorites 実装するときに自然にタブ化する流れで進める。Zenn の "Articles / Books / Scraps" タブも複数 content type が揃ってから出てくる UI
 
 その後 (大物):
 
@@ -208,65 +212,62 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `1ab24a0 feat(articles): List/Feed と pagination を実装` (この後 docs commit が乗る予定)
+- main: `e01cd58 feat(profiles): Profile page に記事一覧を統合` (この後 docs commit が乗る予定、まとめて push)
 - typecheck / build / Playwright 動作確認 全 OK:
-  - Global Feed (10 件 / ページ、Pagination 1→2 ページ切替、partial reload で props は `{ query, articles, articlesCount }` のみ、`auth` / `flash` 評価 skip 確認)
-  - Your Feed (空状態 — `settingsupdatederrortest` は誰もフォローしてないので 0 件、未 login で表示されない確認)
-  - 未 login で `/?tab=feed` → `/login` redirect 確認
-  - author filter (`?author=settingsupdatederrortest` で 13 件、`?author=nobody` で 0 件)
-  - Pagination link 内に query を継承 (`/?offset=10&author=...` で author 維持)
-- ローカル D1: user 12 = `settingsupdatederrortest`、password = `newpassword456` (前セッションから不変)。**新規記事 13 件追加**: `Hello World` (slug `hello-world-morb80ar`) 1 件 + `Test Article 1〜12` (slug `test-article-1`〜`test-article-12`) 12 件。全 author = user 12
+  - Profile page (`/profiles/settingsupdatederrortest`): bio + image + 記事一覧 (page 1 = 10 件、page 2 = 3 件、合計 13 件) + Pagination 動作確認
+  - Pagination link: `/profiles/settingsupdatederrortest?offset=10` (clean URL、partial reload で profile 自体は再評価 skip)
+  - Home `/?author=settingsupdatederrortest` (旧 URL): `author` が schema 削除されたので無視 → 全 13 件表示。フィルタ pill (`@username` 表示) も撤去済み
+- ローカル D1: user 12 = `settingsupdatederrortest`、password = `newpassword456` (前セッションから不変)。記事 13 件 (前セッションの seed): `Hello World` + `Test Article 1〜12`、全 author = user 12
 - dev server は止めた
 
-### 今日 (2026-05-05) やったこと
+### 今日 (2026-05-05、Profile 統合) やったこと
 
-選択肢 A (Articles List/Feed) を片付け。1 commit:
+選択肢 A (Profile に My Articles 統合) を片付け。1 commit:
 
-- `1ab24a0` feat(articles): List/Feed と pagination を実装
+- `e01cd58` feat(profiles): Profile page に記事一覧を統合
 
-ポイント (List/Feed):
-- 前回 (Hono-only API) からほぼ流用できたところ: service の orchestration 構造 (filter 早期 return → where 結合 → list + count)、repo signature (`list(where, limit, offset)` / `count(where)`)、stable sort (`desc(createdAt), desc(id)`)、N+1 回避戦略 (eager load or bulk fetch)
-- 前回から変えたところ:
-  - **path 設計**: 前回 `/articles` + `/articles/feed` 別 path → 今回 `GET /` Home に統合 (Conduit 流、`?tab=global|feed` 1 query で振り分け)
-  - **N+1 回避手法**: 前回 drizzle relations の eager load (`with: { author: true }`) → 今回 `userRepo.findByIds` で手動 bulk (relations 未定義のため。favorites / tags 実装時に relations 入れる候補)
-  - **page props 構造**: API は `{ articles, articlesCount }` 固定、Inertia は `{ query, articles, articlesCount }` の Grouped 構造 ('画面状態 + データ' の責務分離)
-  - **partial reload**: API には無かった機能。タブ / ページ切替で sharedData の `auth` / `flash` 等を再評価しない (closure lazy eval)
-- 1 セッション内 refactor:
-  - 最初 `{ tab, limit, offset, author, articles, articlesCount }` の平坦構造で実装 → あさひさんが「filter と data 混在で気持ち悪い」と気づいて Grouped に再構成
-  - `c.req.valid("query")` から取り出す変数名が `filter` だったのを `query` に統一 (`articlesQuerySchema` の名前と一貫させる)
+ポイント (Profile 統合):
+- **URL 設計の Y 選択 (`?author=` を schema レベルで削除)**: 当初 plan は「Home の `?author=` を活かしつつ Profile からの link で UI 動線を作る」だったが、あさひさんが Zenn `/{username}` の単純さに着目 → 「Profile = user hub」のメンタルモデルを採用。`articlesQuerySchema` から `author` field を撤去、Home の `query.author` UI bits も全削除。industry standard (GitHub / Twitter / Zenn / Qiita / Conduit) に揃う
+- **service 層の `listArticles` は author 引数を残す**: schema からは消えるが、Profile route が直接 `listArticles(db, { author: username, ... })` で呼ぶ形に。HTTP layer と service layer の責務分離。型は `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` で表現
+- **Profile route は 2 service 並行呼出**: `getProfile + listArticles` を `Promise.all` で並走。profile service に統合せず route で orchestrate (1 行 passthrough を作らない、依存方向 simple)
+- **タブは作らず (favorites 実装まで保留)**: Conduit は My Articles / Favorited Articles 2 タブだが今は記事しか無い。1 タブだけのタブ UI は混乱の元、favorites 実装で自然にタブ化する流れに
+- **Pagination component は再利用**: `PARTIAL_KEYS = ["articles", "articlesCount", "query"]` が hardcoded で Home / Profile 共通。profile データは partial reload key に入ってないので再評価 skip され、ページ切替が軽い
 
 途中の議論ポイント:
-- **Your Feed = フォローしてる人の記事** (✗ 自分の記事一覧、と一瞬勘違い)。Conduit のメンタルモデル確認、Home に Your Feed タブを残すことに合意
-- **「自分の記事一覧」は Profile 統合**: Conduit / Zenn / Qiita と同じ動線、List feature 完成済みなので次セッションで Profile に組み込む
+- 当初引き継ぎメモの書き方 (「Profile page で `?author=username` を内部的に効かせて」) があさひさんに「Home の `?author=` URL を Profile から link する案」に読まれた → 「いや、URL は `/profiles/:username` で、`?author=` は service 引数の名前」とすり合わせ → そこから「じゃあ schema から `author` 削っちゃっていい (Y)」という話になり、Y で進行
+- 「タブいる？」「`listArticles` の author 引数残す？」「route で 2 service 並べる vs 統合 service」の 3 つを Q1/Q2/Q3 として整理してから着手
 
 ### 直前の議論で決まったこと
 
-- **List/Feed は `GET /` Home に統合**: Conduit 流。spec の API path 別と差が出るが、Inertia は API path と frontend route が同居するので Conduit のメンタルモデルに寄せる
-- **`articlesQuerySchema` で List/Feed 統合**: `tab=global|feed` の enum 1 個で振り分け。前回は `articlesQuerySchema` と `feedQuerySchema` 別だった
-- **page props は Grouped 構造**: `{ query, articles, articlesCount }`。partial reload の `only` も 3 keys に短縮、責務が key で分離
-- **変数名は `query`**: `filter` だと絞り込み限定の印象、画面状態全般を含む中立名として `query` に統一
-- **N+1 回避は当面手動 bulk**: drizzle relations 未定義のまま `userRepo.findByIds` で OK。favorites / tags 実装で eager load 必要性が出たタイミングで relations 検討
+- **Profile = user hub (URL は `/profiles/:username` 一本)**: industry standard に揃える。`?author=` は Home から完全消去 (schema レベル)
+- **`articlesQuerySchema` から `author` 削除**: HTTP query で受けるのは Home が `{ limit, offset, tab }` のみ
+- **`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})`**: pick で derive、preprocess / coerce 設定を再利用
+- **`listArticles` 入力型は schema 非依存**: `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }`。service layer の filter 引数として `author` は残る
+- **Profile route で 2 service 並行**: `Promise.all([getProfile, listArticles])`、profile service に統合しない
+- **タブ無し**: favorites 実装まで保留
 
 ### 次セッション最初の一手
 
 選択肢:
 
-**A. Profile に「My Articles」記事一覧を統合**
-- 残タスク #1。List/Feed の延長で素直
-- 流れ: Profile page で `?author=username` を内部的に効かせて記事一覧を Pagination 付きで表示。Profile route で `listArticles(db, { author, limit, offset })` を呼ぶ形。Home の ArticleCard / Pagination component を再利用
-- Conduit と同じく「Favorited Articles」タブも追加候補だが、favorites 未実装なので一旦 My Articles のみ
-- これで RealWorld spec の Profile page が完全形になる
+**A. Comments**
+- 残タスク #1。spec 順の素直な次
+- Show.tsx (Articles) に CommentForm + CommentList を追加。signup / Update User で踏んだ form 連携パターンの繰り返し
+- schema: `comments` テーブル (id / body / articleId / authorId / createdAt / updatedAt)。author の bulk 解決は articles と同じ手法
+- Inertia 流: comment POST → redirect-back で同じ article page に戻る、shared data の `errors` で form エラー、`success` flash で通知
 
-**B. Comments**
-- 残タスク #2。spec 順
-- Show.tsx に CommentForm + CommentList を追加。form 連携は signup / Update User で踏んだパターンの繰り返し
+**B. Favorites**
+- 残タスク #2
+- schema: `favorites` テーブル (userId / articleId、composite PK or unique)。articles の view layer に `favoritesCount` / `favorited` を join
+- UI: Favorite ボタン (Article Show / ArticleCard 双方)、Profile に "Favorited Articles" タブ追加 → ようやくタブ UI が活きる
+- N+1 回避が複雑化する分岐点。drizzle relations を本格的に入れるかの判断ポイント (Q1: relations vs 手動 bulk、Q2: count を articles テーブル denormalize vs query 都度集計)
 
 **C. Phase 3: upstream PR**
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
-- 動作確認は List/Feed の partial reload まで含めて十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
+- 動作確認は十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
 - 保管場所 (cookie 1 本同居 vs 別) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
-A は次の本丸 (Profile 完全形)、B は spec 順の素直、C は集大成を外に出す。あさひさんに選んでもらう。
+A は spec 順の素直、B は本格的な複雑性の入口 (relations 検討タイミング)、C は集大成を外に出す。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
