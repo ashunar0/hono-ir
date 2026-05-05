@@ -1,5 +1,7 @@
-import { Link, router } from "@inertiajs/react";
+import { Link } from "@inertiajs/react";
+import { startTransition, useOptimistic } from "react";
 import type { ArticleListView } from "../../../src/features/articles/view";
+import { visit } from "../../lib/inertia-router";
 import type { ProfileArticlesQuery } from "../../../src/features/articles/validators";
 import type { ProfileView } from "../../../src/features/profiles/view";
 import { ArticleCard } from "../../components/ArticleCard";
@@ -38,6 +40,25 @@ export default function Show({
   const { user } = useAuth();
   const isLoggedIn = user !== null;
 
+  // Follow ボタンの仮 state: server 応答までの間だけ反転表示
+  const [optimisticFollowing, toggleOptimisticFollowing] = useOptimistic(
+    profile.isFollowing,
+    (current) => !current,
+  );
+
+  const handleFollowToggle = () => {
+    startTransition(async () => {
+      toggleOptimisticFollowing(null);
+      const url = `/profiles/${profile.username}/follow`;
+      const opts = { preserveScroll: true, only: ["profile"] };
+      if (profile.isFollowing) {
+        await visit.delete(url, opts);
+      } else {
+        await visit.post(url, {}, opts);
+      }
+    });
+  };
+
   const tabs = [
     { key: "my" as const, label: "My Articles" },
     { key: "favorited" as const, label: "Favorited Articles" },
@@ -65,22 +86,12 @@ export default function Show({
 
         {isLoggedIn && !profile.isSelf && (
           <p>
-            {profile.isFollowing ? (
-              <button
-                type="button"
-                onClick={() =>
-                  router.delete(`/profiles/${profile.username}/follow`)
-                }
-              >
+            {optimisticFollowing ? (
+              <button type="button" onClick={handleFollowToggle}>
                 Unfollow @{profile.username}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  router.post(`/profiles/${profile.username}/follow`)
-                }
-              >
+              <button type="button" onClick={handleFollowToggle}>
                 Follow @{profile.username}
               </button>
             )}

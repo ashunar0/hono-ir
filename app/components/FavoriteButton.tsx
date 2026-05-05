@@ -1,4 +1,5 @@
-import { router } from "@inertiajs/react";
+import { startTransition, useOptimistic } from "react";
+import { visit } from "../lib/inertia-router";
 import { useAuth } from "../lib/use-auth";
 
 type Props = {
@@ -38,6 +39,15 @@ export function FavoriteButton({
 }: Props) {
   const { user } = useAuth();
 
+  // 仮 state: server 応答までの間だけ反転表示。応答後は props 更新で自動 reset
+  const [optimistic, toggleOptimistic] = useOptimistic(
+    { favorited, favoritesCount },
+    (current) => ({
+      favorited: !current.favorited,
+      favoritesCount: current.favoritesCount + (current.favorited ? -1 : 1),
+    }),
+  );
+
   // 未ログインは押せないが count は読めるように静的表示
   if (!user) {
     return (
@@ -48,21 +58,25 @@ export function FavoriteButton({
   }
 
   const handleClick = () => {
-    const opts = { preserveScroll: true, only };
-    if (favorited) {
-      router.delete(`/articles/${slug}/favorite`, opts);
-    } else {
-      router.post(`/articles/${slug}/favorite`, {}, opts);
-    }
+    startTransition(async () => {
+      toggleOptimistic(null);
+      const url = `/articles/${slug}/favorite`;
+      const opts = { preserveScroll: true, only };
+      if (favorited) {
+        await visit.delete(url, opts);
+      } else {
+        await visit.post(url, {}, opts);
+      }
+    });
   };
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      style={favorited ? activeStyle : baseStyle}
+      style={optimistic.favorited ? activeStyle : baseStyle}
     >
-      {favorited ? "♥" : "♡"} {favoritesCount}
+      {optimistic.favorited ? "♥" : "♡"} {optimistic.favoritesCount}
     </button>
   );
 }
