@@ -66,6 +66,10 @@ src/
       index.ts         # Hono sub-app (POST /articles/:slug/favorite + DELETE /articles/:slug/favorite、c.back で referer 戻し)
       repository.ts    # favoriteRepo (exists / favoritedArticleIdsIn (bulk Set) / countByArticleId / countByArticleIds (bulk Map) / create / delete / findArticleIdsFavoritedBy)
       service.ts       # favoriteArticle / unfavoriteArticle + resolveFavoriteContext (一覧用 bulk: Set + Map) / resolveFavoriteFor (1 件用)
+    tags/              # タグ feature (article × tag の関係、独立 feature)
+      index.ts         # Hono sub-app (GET /tags のみ、create/update 連携は articles service が直接呼ぶ)
+      repository.ts    # tagRepo (listAllNames / tagsByArticleId / tagsByArticleIds (bulk Map) / findArticleIdsByTagName / replaceArticleTags)
+      service.ts       # listAllTags / getTagsByArticleId / listTagsByArticleIds / setArticleTags / findArticleIdsByTagName
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -83,16 +87,18 @@ src/
 
 app/
   pages/               # Inertia React pages (component 名 == file path)
-    Home.tsx           # Global Feed / Your Feed タブ + ArticleCard 一覧 + Pagination、page props は { query, articles, articlesCount } の Grouped 構造
+    Home.tsx           # Global Feed / Your Feed / Tag Feed タブ + ArticleCard 一覧 + Pagination + Popular Tags サイドバー、page props は { query, articles, articlesCount, popularTags } の Grouped 構造
     Users/Register.tsx # FlashMessages 含む
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
-    Articles/New.tsx   # 記事新規作成 form (useForm flat)
-    Articles/Show.tsx  # 記事表示 + Comments セクション (CommentForm + CommentList を inline、未ログインは Sign in prompt)
+    Articles/New.tsx   # 記事新規作成 form (useForm flat) + TagInput
+    Articles/Edit.tsx  # 記事編集 form + TagInput (article.tagList 初期値)
+    Articles/Show.tsx  # 記事表示 + tag pill + Comments セクション (CommentForm + CommentList を inline、未ログインは Sign in prompt)
     Profiles/Show.tsx  # プロフィール表示 + タブ (My Articles / Favorited Articles) + 記事一覧 + Pagination
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
-    ArticleCard.tsx    # 記事 1 行表示 (一覧用、FavoriteButton 内蔵)、ArticleListView を受け取る
+    ArticleCard.tsx    # 記事 1 行表示 (一覧用、FavoriteButton + tag pill 内蔵)、ArticleListView を受け取る
     FavoriteButton.tsx # ♡/♥ + count の Toggle ボタン、未ログインは static span、partial reload key を only prop で受ける
+    TagInput.tsx       # chips 形式の tag 入力 (Conduit 流: Enter / カンマで追加 / × で削除 / Backspace で直前削除 / blur で confirm)
     Pagination.tsx     # offset/limit 用ページ番号 UI、Inertia の `<Link only={...} preserveScroll>` で partial reload 連動
   lib/
     use-auth.ts        # useAuth() hook (型付き shared data アクセス)
@@ -143,7 +149,7 @@ docs/
 - main 直 push（個人開発）
 - Conventional Commits、日本語、例: `feat(auth): ...`, `refactor(lib): ...`
 
-## 実装状況 (2026-05-05 時点、Favorites まで)
+## 実装状況 (2026-05-06 時点、Tags まで → RealWorld spec 機能完成)
 
 ### 完了
 
@@ -171,10 +177,7 @@ docs/
 - [x] **Profile に記事一覧統合**: Profile (`/profiles/:username`) が user hub。bio + Follow + 記事一覧 + Pagination が 1 page に集約。`articlesQuerySchema` から `author` を削除 (Home の `?author=` URL filter 廃止)、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})` で Profile 用に derive。Profile route で `getProfile + listArticles` を `Promise.all` 並行呼出。`listArticles` 入力型を `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更 (HTTP schema 非依存、author は service 層 filter として残す)。Pagination component の partial reload key は Home と共通 (`["articles", "articlesCount", "query"]`)、profile 自体は再評価 skip
 - [x] **Comments**: schema (`comments` テーブル + migration 0004) + Add (`POST /articles/:slug/comments`) + Delete (`DELETE /articles/:slug/comments/:id`)。Show route で `getArticleBySlug + listComments` を `Promise.all` 並行呼出、author は `userRepo.findByIds` で bulk 解決 (articles と同じ pattern、relations 未使用維持)。「自分の comment か」は `useAuth().user?.username === comment.author.username` で client 側判定 (server に viewerId 持ち込まない)。CommentForm + CommentList は Show.tsx 内に inline (1 page 専用、別 component file は YAGNI)。未ログインは Sign in prompt で form 非表示。delete 時は service で `comment.articleId === article.id` を検証 (URL 改竄で他記事の comment を消されるのを防ぐ)
 - [x] **Favorites**: schema (`favorites` テーブル + migration 0005、composite PK + 両 cascade) + `features/favorites/` 独立 feature (follows と同形)。ArticleView / ArticleListView に `favoritesCount` + `favorited` を追加、一覧では `resolveFavoriteContext(db, viewerId, articleIds)` で count Map と viewer の favorited Set を bulk 解決 (drizzle relations 未使用、手動 bulk 維持)、Show では `resolveFavoriteFor(db, viewerId, articleId)` で 1 件解決。`POST/DELETE /articles/:slug/favorite` は `c.back()` で referer に戻す (Home / Profile / Show どこから押しても同じ動作)。FavoriteButton は共通 component で partial reload key を `only` prop で受ける (一覧 = `["articles", "articlesCount", "query"]` / Show = `["article"]`)。未ログインは static span (count 表示のみ)。Profile に `?tab=my|favorited` のタブ追加、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset}).extend({tab: ...})` で extend、profiles route で tab に応じて `listArticles` の filter を `{author: username}` ↔ `{favorited: username}` で切替
-
-### 残タスク (RealWorld spec 順)
-
-1. **Tags** (tagList / `?tag=` filter / タグクラウド)
+- [x] **Tags**: schema (`tags` + `article_tags` + migration 0006) + `features/tags/` 独立 feature (favorites / follows と同形)。ArticleView / ArticleListView に `tagList: string[]` 追加、一覧では `listTagsByArticleIds(db, articleIds)` で Map 解決 (drizzle relations 未使用、手動 bulk 維持)、Show では `getTagsByArticleId(db, articleId)`。create / update は articles service が `setArticleTags(db, articleId, tagList)` を呼ぶ → `replaceArticleTags` で `delete → upsert(onConflictDoNothing) → link 集約` の全置換。orphan tag (どの記事にも紐づかない tag) は削除せず放置 (前回踏襲)。validators の `tagListSchema` で空文字除外 + 重複除去を `transform` 吸収、create は `default([])`、update は optional (`undefined` = touch しない、`[]` = 全削除)。`articlesQuerySchema` に `tag?: string` 追加、Home の `?tag=` filter で listArticles の articleIds 絞り込み。UI: chips 形式の `TagInput` 共通 component (Enter / カンマで追加 / × / Backspace で削除 / blur で confirm)、ArticleCard / Show で tag pill (`?tag=xxx` link)、Home に `Popular Tags` サイドバー (`listAllTags` 結果の pill 並べ + 選択中は色変え) と active tag のとき "# foo" の Tag Feed タブを動的追加
 
 ### リファクタ候補
 
@@ -229,6 +232,14 @@ docs/
 - **`c.back` の解釈拡大: errors 専用 → redirect-back の汎用 helper** (2026-05-05): 当初 `c.back` は「validation errors を redirect-back で運ぶための 1 行 helper」として導入したが、実態は「**Referer ヘッダから戻り先を自動取得して 303 redirect、ついでに任意で flash/errors を抱き合わせ**」の汎用 helper。Favorite で `c.back()` 引数空 (silent toggle) を使ってみて違和感が出たのを契機に再整理 → **redirect 先 = Referer の場面で広く使う方針** に拡張。Follow / Unfollow / articles の Update/Delete forbidden / comments の add/delete も `c.back({ flash, fallback })` に統一。`fallback` は Referer が無い稀ケース (URL 直叩き等) の保険として渡す。**例外**: Edit form (GET `/articles/:slug/edit`) の forbidden は **Show に固定で飛ばしたい** ので `c.redirect` 維持 (URL 直叩き / Home からの link で Referer が Show 以外な可能性、Referer に戻すと意図と外れる)。
 - **`c.back` 採用の判断軸: 将来の機能拡張に強い** (2026-05-05): 例えば Follow ボタンを Profile だけでなく将来 Article Show の著者情報横にも置く (Zenn / Conduit 流) 場合、`c.redirect(/profiles/${username})` 固定だと「記事から Follow → 強制 Profile 遷移」になって UX 損ねる。`c.back()` なら「押された場所に留まる」(Twitter / GitHub 流派) が自然に効く。**SNS の Follow / Like 操作は `c.back` 流派が現代の慣例**、`c.redirect` 固定は「フォロー直後に相手 page を見せたい」明示的意図があるときだけ使う使い分け。同じ判断軸で comments も Show 固定 redirect から `c.back` に統一 (将来 comment 一覧が別 page になる可能性があるが、現状は Show のみ動線なので大差ないが、`fallback: /articles/:slug` で保険)
 - **Follow と Favorite の flash 通知は意図的に書き分け** (2026-05-05): Follow は flash 成功通知あり、Favorite は flash 無し (silent toggle)。SNS 慣例で **「Follow / Unfollow は通知あり」**「**Like / Favorite は通知無し**」が一般的 (Twitter / GitHub もこの流派)。**state を作る操作 = 通知あり、ハートの toggle = silent** という UX 軸で書き分ける。判断記録に明文化することで「なぜ片方だけ flash あるの？」という後の混乱を防ぐ
+- **tags は独立 feature 化 (前回踏襲せず)** (2026-05-06): 前回 (Hono-only) は articles repo に tag 系 method (`findTagByName` / `findArticleIdsByTagId` / `replaceArticleTags`) を集約し、`features/tags/` は `GET /tags` のみだった。今回は **favorites / follows と同形で独立 feature 化** (`features/tags/` に repository + service + index)。articles service が `setArticleTags` / `getTagsByArticleId` / `listTagsByArticleIds` / `findArticleIdsByTagName` を呼ぶ単方向依存。意図的に前回と差分を作って対照実験の素材にする (規約「規約 > YAGNI、薄い service 経由」を維持)
+- **drizzle relations は今回も未使用、手動 bulk 維持** (2026-05-06): favorites と同パターンで `tagsByArticleIds(ids) → Map<articleId, string[]>` を `Promise.all` で取って articles service に渡す。relations 入れれば `with: { articleTags: { with: { tag: true } } }` で 1 query にまとめられるが、引き続き手動 bulk のまま (前回 Hono-only は relations + eager load 派、対比のため意図的に揃えない)
+- **orphan tag は前回踏襲で放置** (2026-05-06): `replaceArticleTags` は `delete article_tags → upsert tags(onConflictDoNothing) → insert article_tags` の流れ。記事から全部 unlink された tag は `tags` table に残り続ける。タグクラウド (`GET /tags`) で「過去に使われた tag」を参照履歴として残す流派、delete 判定 (link 0 で消す？trigger？) を持ち込まない簡素さを優先
+- **tagListSchema を z.transform で正規化、create/update の default 使い分け** (2026-05-06): `tagListSchema = z.array(z.string()).transform((tags) => [...new Set(tags.map(t => t.trim()).filter(t => t.length > 0))])` で空文字除外 + 重複除去を validator 層で吸収。**create は `.default([])`** (未指定でも空配列に揃える、service の `?? []` を不要に) / **update は `.optional()`** (`undefined` = touch しない vs `[]` = 全削除 の使い分け)。Inertia の chips UI / curl 直叩きどちらでも同じ解釈になる、Update User の preprocess と同流派
+- **chips UI は Conduit 流派の自前実装** (2026-05-06): RealWorld 公式 frontend の Editor が「Enter tags」テキスト + Enter / カンマで chip 追加 + × で削除、の chips 流派。CSV split や textarea は spec 外。`app/components/TagInput.tsx` 共通 component として 80 行程度の実装、操作は **Enter / カンマで追加 / × で個別削除 / Backspace で空入力時に直前削除 / blur で confirm**。`useState<string>` で draft、`onChange` で親に `string[]` を伝える pattern。Inertia 化で初めて加わる UI 部品
+- **Popular Tags は server.ts で listAllTags 直接呼び** (2026-05-06): タグクラウドの GET /tags は Hono sub-app として外部 API (将来別 client 用) に提供しつつ、Home の Inertia page では server.ts の Home route から `listAllTags(db)` を直接呼んで page props (`popularTags`) に載せる。**外部 API と Inertia page は別経路** で同じ service を共有する形。articles の Home route が `listArticles` を呼ぶのと同じ pattern (server.ts に page-level orchestration を置く流派の延長)
+- **Home の Tag Feed タブは動的追加** (2026-05-06): タブ nav は通常 `Global Feed` / `Your Feed` の 2 つ、`query.tag` がある時のみ 3 つ目 "# foo" を active 状態の span として動的追加 (Conduit 流派)。Global / Your クリックで tag を解除、Popular Tags の pill クリックで tag セット。`buildHomeHref({ ...query, tab, tag })` で URL 組み立て、tag は optional で undefined を渡せば消える。partial reload の `only` は `["articles", "articlesCount", "query"]` のままで Popular Tags 自体は再評価 skip (sidebar は静的、tag 切替のたびに再 fetch しない)
+- **listArticles 入力型: tag は HTTP query 由来で Pick** (2026-05-06): `Pick<ArticlesQuery, "limit" | "offset" | "tag"> & { author?: string; favorited?: string }` の 3 layer 構造を維持。**tag は Home の `?tag=` 経由で URL に出る → schema (`articlesQuerySchema`) に乗せる** / **author / favorited は Profile route 経由で URL の `:username` から service 引数として渡す → schema には乗せない**。「URL 動線 = HTTP layer」「内部 filter = service layer」の境界を維持
 
 その後 (大物):
 
@@ -241,83 +252,59 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `0d85b85 docs: c.back の解釈拡大と redirect/back 使い分けの判断軸を記録` まで origin/main に **push 済み** (累積 8 commits を一括 push)
-- typecheck / build OK、refactor は redirect 先動作を保つ書き換えのみで動作確認スキップ (動作変化なし、Favorites の動作確認は実施済み):
-  - Home / Profile / Show での Favorite toggle ✓
-  - Profile タブ My/Favorited 切替 ✓
-  - 未ログイン時の static `<span>` 表示 ✓
-- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456`。記事 13 件、favorites は user 12 が `Test Article 1` を 1 件 favorite した状態 (動作確認の残骸)
+- main: 直前 push 済みの `0d85b85` (c.back 解釈拡大の docs) の上に、Tags 実装 + 引き継ぎメモ更新を本セッションで commit (詳細は下「今日やったこと」)。push 後の最新 commit hash は次セッションで `git log --oneline -3` で確認
+- typecheck / build OK、API 経由の動作確認実施済み:
+  - `POST /articles` with `tagList: ["react","hono","d1"]` → 303 + redirect ✓
+  - `GET /articles/:slug` の article.tagList ✓
+  - `GET /tags` → タグクラウド ✓
+  - `GET /?tag=react` → 1 件絞り込み + popularTags 3 個 ✓
+  - `PUT /articles/:slug` with `tagList: ["typescript","hono"]` → 全置換 ✓
+  - update 後の orphan 残存 (`react` `d1` が tags table に残る) ✓
+- UI の細かい挙動 (chips の Enter / カンマ / × / Backspace / blur、Popular Tags クリック、Tag Feed タブ) はあさひさんがブラウザで確認済み
+- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456`。記事 14 件 (smoke test 用 `tag-smoke-test-mosscnxk` を user 12 が作成、tagList=`["hono","typescript"]`)。tags table は `["react","hono","d1","typescript"]` の 4 つ (`react` `d1` は orphan)
 - dev server は止めた
 
-### 今日 (2026-05-05、Favorites + c.back 拡大) やったこと
+### 今日 (2026-05-06、Tags 実装) やったこと
 
-前回 (Hono-only) との **対照実験** で Favorites 実装。その後、`c.back()` の使い方の議論から `c.back` の解釈拡大 → 関連 routes の refactor まで波及。
+前回 (Hono-only) との **対照実験** で Tags 実装。RealWorld spec 機能完成。
 
-push した commits (8 個):
-```
-0d85b85 docs: c.back の解釈拡大と redirect/back 使い分けの判断軸を記録
-f52b253 refactor: redirect 先=Referer の場面を c.back に統一
-24114c2 docs: Favorites 実装に合わせて引き継ぎメモを更新
-7f867f7 feat(favorites): 記事のいいね機能と Profile のお気に入りタブを追加
-6a7cc98 docs: isAuthor 判定の server/client 使い分けを判断記録に追加
-9c425d6 refactor(comments): isAuthor 判定を server から client に移す
-9d9a981 docs: Comments 実装に合わせて引き継ぎメモを更新
-c663b86 feat(comments): 記事へのコメント機能を追加
-```
+#### Tags 実装 ポイント
+- **tags を独立 feature 化** (前回は articles repo に集約、今回は `features/tags/` 切り出し → favorites / follows と同形)。意図的に前回と差分を作って対照実験
+- **drizzle relations は今回も未使用、手動 bulk 維持** (`tagsByArticleIds(ids) → Map<articleId, string[]>` を articles service の `Promise.all` に追加)
+- **orphan tag は前回踏襲で放置** (`replaceArticleTags` は delete → upsert → link、tags table から消さない)
+- **chips UI (`TagInput`) を共通 component で自前実装** (Conduit 流: Enter / カンマ追加 / × 削除 / Backspace で直前削除 / blur で confirm)
+- **tagListSchema を z.transform で正規化** (空文字除外 + 重複除去)、create は `default([])` / update は `optional` (undefined = touch しない、[] = 全削除)
+- **Popular Tags は server.ts で `listAllTags` 直接呼び** (sub-app の GET /tags と Inertia page は別経路で同じ service を共有)
+- **Tag Feed タブは動的追加** (`query.tag` ありのとき "# foo" の active span を出す、Conduit 流)
+- **listArticles 入力型に `tag` 追加 (HTTP query 由来で Pick)** (author / favorited は service 引数のまま、3 layer 分離維持)
 
-#### Favorites 実装 ポイント
-- **favorites を独立 feature 化** (前回は articles repo に集約、今回は `features/favorites/` 切り出し → follows と同形)
-- **drizzle relations は今回も未使用、手動 bulk 維持** (`countByArticleIds` Map + `favoritedArticleIdsIn` Set を `Promise.all` で取って articles service に渡す)
-- **Profile タブ UI** (`?tab=my|favorited`) がここで初登場
-- **FavoriteButton 共通 component** (`only` prop で page ごとに partial reload key 注入)
-- **viewer 文脈 helper を service に集約** (`resolveFavoriteContext` / `resolveFavoriteFor`)
-
-#### `c.back` 解釈拡大 の議論
-あさひさんから「favorites/index.ts で `c.back()` 引数空が気持ち悪い」という指摘。深掘りした結果:
-- `c.back` は当初「validation errors を redirect-back で運ぶ helper」として導入
-- 実態は「**Referer ヘッダから戻り先を自動取得して 303 redirect、ついでに任意で flash/errors を抱き合わせ**」の汎用 helper
-- **Hono adapter (`@hono/inertia` 0.1.0) には `c.back` 相当無し**、Laravel/Rails には framework core に `back()` / `redirect_back_or_to` がある (Phase 3 PR の動機)
-- 「`back` という名前の意味」「Referer ヘッダの仕組み」「Laravel/Rails-Inertia との比較」「partial reload の `only` は client 側で指定 = server コードに出ない」「Rails 古典 / Hotwire / Inertia の partial 更新の差異」まで Q&A で整理
-
-#### refactor (8 commit のうち 2 つ)
-- 解釈拡大に基づき `redirect 先 = Referer` の場面を `c.back` に統一:
-  - profiles/follow/unfollow
-  - articles/update/delete forbidden
-  - comments/add/delete
-- Edit form (GET) の forbidden は **Show 以外から踏まれる可能性** (URL 直叩き / Home リンク) があるため `c.redirect` 維持
-- Follow と Favorite の flash 書き分け (Follow=通知あり / Favorite=silent) を判断記録に明文化
-- 将来 Article Show 等の他 page から Follow が来た時に「押された場所に戻る」UX が自然に効くようになる (Zenn 流の著者 Follow 拡張に強い)
-
-#### 判断記録に新たに追加した項目
-- favorites は独立 feature / drizzle relations は引き続き保留 / favoritesCount は都度集計 / viewer 文脈 helper の命名規約 (`resolveXxxContext / resolveXxxFor`)
-- listArticles 入力型の 3 layer 分離 / Profile タブは `?tab=` 形 / favorite は silent toggle (flash 無し)
-- partial reload key は prop で受ける / React 19 の border shorthand 警告
-- **`c.back` の解釈拡大: errors 専用 → redirect-back の汎用 helper**
-- **`c.back` 採用の判断軸: 将来の機能拡張に強い** (Zenn 流の著者 Follow など)
-- **Follow と Favorite の flash 通知は意図的に書き分け** (state を作る vs toggle)
+#### 判断記録に新たに追加した項目 (2026-05-06)
+- tags は独立 feature 化 (前回踏襲せず) / drizzle relations 未使用 / orphan tag 放置
+- tagListSchema の transform + create/update の default 使い分け
+- chips UI は Conduit 流派の自前実装 / Popular Tags は server.ts 直接呼び
+- Home の Tag Feed タブ動的追加 / listArticles 入力型: tag は HTTP query 由来で Pick
 
 ### 次セッション最初の一手
 
-選択肢:
+RealWorld spec の機能はこれで全部完成 ✓。残る選択肢:
 
-**A. Tags**
-- 残タスク #1 (RealWorld spec の最後の機能)
-- schema: `tags` (id / name unique) + `article_tags` (articleId / tagId, composite PK、両 cascade)
-- 記事 create / update で tag を upsert + link 集約 (前回の `replaceArticleTags` パターン踏襲)
-- view: ArticleView / ArticleListView に `tagList: string[]` 追加、bulk 解決 (favorites と同パターン: `articleTagsByArticleIds(ids) → Map<articleId, string[]>`)
-- UI: New / Edit form に tag 入力 (CSV-like or chips UI)、ArticleCard / Show に tag 表示、Home に `?tag=` filter
-- favorites と違って **viewer 文脈なし** (誰が見ても tagList は同じ) なので簡単。Profile タブ化も無し
-
-**B. Phase 3: upstream PR**
+**B. Phase 3: upstream PR** ← 本来の集大成
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
-- 動作確認は十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
+- 動作確認は Articles / Comments / Favorites / Tags 全機能で十分積んだ
+- PR のコード本体は user-land 実装 (`lib/inertia-share.ts` + `lib/inertia-helpers.ts`) の切り出しのみ
+- `c.back` の解釈拡大も PR の素材として整理済み (validation errors 専用ではなく redirect-back 汎用 helper として位置付け)
 - 保管場所 (cookie 1 本同居 vs 別) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
 **C. 404 page を Inertia 流に**
 - 残ってる小ネタリファクタ (リファクタ候補に記載)
 - `app.notFound((c) => c.render("Errors/NotFound", {}))` で page 化、現状は `c.notFound()` のデフォルト plain text のまま
+- Tags の Show / Edit / Delete の `not_found` 経路でも踏まれる
 
-A → B が筋 (RealWorld spec 完成 → 外部貢献で集大成)、C はいつでも入れられる小ネタ。Phase 3 PR の前に Tags まで終えて全機能揃えてから PR 内容を考える方が、`c.back` 拡大のような「やってみて分かった」発見も含めて成熟した提案にできる、というのが直前の議論で出た方針。
+**D. その他リファクタ / 仕上げ**
+- 例: ArticleCard / Show / TagInput の tag pill style が 3 箇所で重複してるので `TagPill` component に括る
+- 例: server.ts の Home route inline が長くなってきたら page-level orchestration を articles feature に切り出す
+
+B → C が筋 (Phase 3 PR が本来の集大成、404 は仕上げ)。D は気になったら都度。
 
 ### コーチモードで進行中
 
