@@ -241,40 +241,60 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: 直前の comments 4 commits の上に `feat(favorites)` + `docs` が乗る予定 (これから commit)。push は溜まったまま
-- typecheck / build / Playwright 動作確認 全 OK:
-  - Home: 各 ArticleCard に `♡ count` ボタン、login 済みで toggle (♥ active 表示) + count 増減、partial reload (`["articles","articlesCount","query"]`) で再評価
-  - Article Show: 同 FavoriteButton 配置、partial reload (`["article"]`) で article のみ再評価
-  - Profile タブ: My Articles / Favorited Articles 切替 OK (`?tab=favorited`)、tab 切替時 offset リセット、Pagination も連動
-  - 未ログイン: `<button>` ではなく static `<span>` で count のみ表示、クリック不可
-- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456` (前セッションと同じ)。記事 13 件、favorites は user 12 が `Test Article 1` を 1 件 favorite した状態 (動作確認の残骸)
+- main: `0d85b85 docs: c.back の解釈拡大と redirect/back 使い分けの判断軸を記録` まで origin/main に **push 済み** (累積 8 commits を一括 push)
+- typecheck / build OK、refactor は redirect 先動作を保つ書き換えのみで動作確認スキップ (動作変化なし、Favorites の動作確認は実施済み):
+  - Home / Profile / Show での Favorite toggle ✓
+  - Profile タブ My/Favorited 切替 ✓
+  - 未ログイン時の static `<span>` 表示 ✓
+- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456`。記事 13 件、favorites は user 12 が `Test Article 1` を 1 件 favorite した状態 (動作確認の残骸)
 - dev server は止めた
 
-### 今日 (2026-05-05、Favorites) やったこと
+### 今日 (2026-05-05、Favorites + c.back 拡大) やったこと
 
-前回 (Hono-only) との **対照実験** で進めた。骨格は流用しつつ、hono-ir の規約に合わせて以下を変更:
+前回 (Hono-only) との **対照実験** で Favorites 実装。その後、`c.back()` の使い方の議論から `c.back` の解釈拡大 → 関連 routes の refactor まで波及。
 
+push した commits (8 個):
+```
+0d85b85 docs: c.back の解釈拡大と redirect/back 使い分けの判断軸を記録
+f52b253 refactor: redirect 先=Referer の場面を c.back に統一
+24114c2 docs: Favorites 実装に合わせて引き継ぎメモを更新
+7f867f7 feat(favorites): 記事のいいね機能と Profile のお気に入りタブを追加
+6a7cc98 docs: isAuthor 判定の server/client 使い分けを判断記録に追加
+9c425d6 refactor(comments): isAuthor 判定を server から client に移す
+9d9a981 docs: Comments 実装に合わせて引き継ぎメモを更新
+c663b86 feat(comments): 記事へのコメント機能を追加
+```
+
+#### Favorites 実装 ポイント
 - **favorites を独立 feature 化** (前回は articles repo に集約、今回は `features/favorites/` 切り出し → follows と同形)
 - **drizzle relations は今回も未使用、手動 bulk 維持** (`countByArticleIds` Map + `favoritedArticleIdsIn` Set を `Promise.all` で取って articles service に渡す)
-- **Inertia 流 silent toggle** (`c.back()` だけで flash 通知無し、partial reload で UI 即時反映)
-- **Profile タブ UI** (`?tab=my|favorited`) がここで初登場、tab 切替は `<Link only={...} preserveScroll>`
+- **Profile タブ UI** (`?tab=my|favorited`) がここで初登場
 - **FavoriteButton 共通 component** (`only` prop で page ごとに partial reload key 注入)
-- **viewer 文脈 helper を service に集約** (`resolveFavoriteContext` / `resolveFavoriteFor` で count + favorited を 1 つの戻り値に、follows の `resolveIsFollowing` と同位置)
+- **viewer 文脈 helper を service に集約** (`resolveFavoriteContext` / `resolveFavoriteFor`)
 
-判断記録に新たに追加した項目:
-- favorites は独立 feature
-- drizzle relations は引き続き保留 (手動 bulk で十分綺麗だった、想定より差が出なかった)
-- favoritesCount は都度集計、denormalize しない
-- viewer 文脈 helper は service の `resolveXxxContext / resolveXxxFor` 命名規約
-- listArticles の入力型は HTTP schema / service filter / viewer context の 3 layer 分離
-- Profile タブは `?tab=` 形 (Home の `?tab=global|feed` と consistency)
-- favorite は flash 通知無し (silent toggle の UX、state を作る操作と toggle を区別)
-- partial reload key は prop で受ける (使い場所差異がある component の場合)
-- React 19 の border shorthand 警告ハマり (border / borderColor 混在 → 3 long-hand に分解)
+#### `c.back` 解釈拡大 の議論
+あさひさんから「favorites/index.ts で `c.back()` 引数空が気持ち悪い」という指摘。深掘りした結果:
+- `c.back` は当初「validation errors を redirect-back で運ぶ helper」として導入
+- 実態は「**Referer ヘッダから戻り先を自動取得して 303 redirect、ついでに任意で flash/errors を抱き合わせ**」の汎用 helper
+- **Hono adapter (`@hono/inertia` 0.1.0) には `c.back` 相当無し**、Laravel/Rails には framework core に `back()` / `redirect_back_or_to` がある (Phase 3 PR の動機)
+- 「`back` という名前の意味」「Referer ヘッダの仕組み」「Laravel/Rails-Inertia との比較」「partial reload の `only` は client 側で指定 = server コードに出ない」「Rails 古典 / Hotwire / Inertia の partial 更新の差異」まで Q&A で整理
 
-途中の判断:
-- 当初 favoriteArticle / unfavoriteArticle で `c.back()` だけにしていたが、これは Inertia の silent toggle 流派で「flash 無しが UX 上正しい」と判断
-- favorite ボタンを ArticleCard と Show で共通化するか、それぞれ inline で書くかで一瞬迷ったが、partial reload key が page で違うので **共通 component + only prop** に着地
+#### refactor (8 commit のうち 2 つ)
+- 解釈拡大に基づき `redirect 先 = Referer` の場面を `c.back` に統一:
+  - profiles/follow/unfollow
+  - articles/update/delete forbidden
+  - comments/add/delete
+- Edit form (GET) の forbidden は **Show 以外から踏まれる可能性** (URL 直叩き / Home リンク) があるため `c.redirect` 維持
+- Follow と Favorite の flash 書き分け (Follow=通知あり / Favorite=silent) を判断記録に明文化
+- 将来 Article Show 等の他 page から Follow が来た時に「押された場所に戻る」UX が自然に効くようになる (Zenn 流の著者 Follow 拡張に強い)
+
+#### 判断記録に新たに追加した項目
+- favorites は独立 feature / drizzle relations は引き続き保留 / favoritesCount は都度集計 / viewer 文脈 helper の命名規約 (`resolveXxxContext / resolveXxxFor`)
+- listArticles 入力型の 3 layer 分離 / Profile タブは `?tab=` 形 / favorite は silent toggle (flash 無し)
+- partial reload key は prop で受ける / React 19 の border shorthand 警告
+- **`c.back` の解釈拡大: errors 専用 → redirect-back の汎用 helper**
+- **`c.back` 採用の判断軸: 将来の機能拡張に強い** (Zenn 流の著者 Follow など)
+- **Follow と Favorite の flash 通知は意図的に書き分け** (state を作る vs toggle)
 
 ### 次セッション最初の一手
 
@@ -293,12 +313,11 @@ docs/
 - 動作確認は十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
 - 保管場所 (cookie 1 本同居 vs 別) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
-**C. リファクタ + push**
-- articles の forbidden / not_found を `c.back` 化 (3 箇所重複、未着手)
-- 404 page を Inertia 流に (`app.notFound((c) => c.render("Errors/NotFound", {}))`)
-- 累積した未 push commit を整理して push
+**C. 404 page を Inertia 流に**
+- 残ってる小ネタリファクタ (リファクタ候補に記載)
+- `app.notFound((c) => c.render("Errors/NotFound", {}))` で page 化、現状は `c.notFound()` のデフォルト plain text のまま
 
-A は spec 完成、B は外部貢献、C は累積債務整理。A → B が筋 (機能完成 → 外に出す)、間に C を挟むのもあり。あさひさんに選んでもらう。
+A → B が筋 (RealWorld spec 完成 → 外部貢献で集大成)、C はいつでも入れられる小ネタ。Phase 3 PR の前に Tags まで終えて全機能揃えてから PR 内容を考える方が、`c.back` 拡大のような「やってみて分かった」発見も含めて成熟した提案にできる、というのが直前の議論で出た方針。
 
 ### コーチモードで進行中
 
