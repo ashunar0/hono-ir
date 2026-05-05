@@ -56,6 +56,12 @@ src/
     follows/           # フォロー関係 feature (users 間の関係モデル)
       repository.ts    # followRepo (exists / create / delete / findFollowingIds (Feed 用))
       service.ts       # resolveIsFollowing(db, viewerId, targetId) — viewer 文脈の follow 判定共通 helper
+    comments/          # 記事コメント feature
+      index.ts         # Hono sub-app (POST /articles/:slug/comments + DELETE /articles/:slug/comments/:id)
+      validators.ts    # createCommentSchema (body のみ)
+      repository.ts    # commentRepo (listByArticleId / findById / create / delete)
+      service.ts       # addComment / listComments / deleteComment + author を bulk 解決して N+1 回避
+      view.ts          # CommentView 型 + toCommentView (viewerId から isAuthor flag 立てる)
   middleware/
     validator.ts       # validateJson / validateQuery
     auth.ts            # requireAuth (防衛係) / loadAuth (観測係)、resolveUserId は session/service へ delegate
@@ -77,7 +83,7 @@ app/
     Users/Register.tsx # FlashMessages 含む
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
     Articles/New.tsx   # 記事新規作成 form (useForm flat)
-    Articles/Show.tsx  # 記事表示 (props 型は features/articles/view から import)
+    Articles/Show.tsx  # 記事表示 + Comments セクション (CommentForm + CommentList を inline、未ログインは Sign in prompt)
     Profiles/Show.tsx  # プロフィール表示 + その user の記事一覧 + Pagination (Follow/Unfollow ボタン、isSelf 時は "This is your profile.")
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
@@ -132,7 +138,7 @@ docs/
 - main 直 push（個人開発）
 - Conventional Commits、日本語、例: `feat(auth): ...`, `refactor(lib): ...`
 
-## 実装状況 (2026-05-05 時点、Profile 統合まで)
+## 実装状況 (2026-05-05 時点、Comments まで)
 
 ### 完了
 
@@ -158,12 +164,12 @@ docs/
 - [x] **Update User** (`PUT /user`): `features/users/` を route 化、`GET /settings` (form 表示) + `PUT /user` (更新) の 2 routes。全 field optional、重複チェックは自分以外、password は変更時のみ PBKDF2 hash。validator preprocess で空文字を field 別に正規化 (email/username/password → undefined "変更しない"、bio/image → null "clear")。form は `noValidate` で HTML5 validation 無効化 → サーバ validate 一本
 - [x] **Articles List/Feed + Pagination**: Home (`GET /`) を Global Feed / Your Feed タブ + pagination (1 ページ 10 件) 対応に。`articlesQuerySchema` (limit/offset/tab) で List/Feed を 1 schema に統合。author は `userRepo.findByIds` で bulk 解決して N+1 回避 (drizzle relations 未使用)、`ArticleListView` (body 抜き) で list response 帯域節約。未 login で `?tab=feed` → `/login` redirect。page props は `{ query, articles, articlesCount }` の Grouped 構造、partial reload の `only` も `["articles", "articlesCount", "query"]` の 3 keys に短縮 → sharedData の `auth` / `flash` closure は評価 skip
 - [x] **Profile に記事一覧統合**: Profile (`/profiles/:username`) が user hub。bio + Follow + 記事一覧 + Pagination が 1 page に集約。`articlesQuerySchema` から `author` を削除 (Home の `?author=` URL filter 廃止)、`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})` で Profile 用に derive。Profile route で `getProfile + listArticles` を `Promise.all` 並行呼出。`listArticles` 入力型を `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更 (HTTP schema 非依存、author は service 層 filter として残す)。Pagination component の partial reload key は Home と共通 (`["articles", "articlesCount", "query"]`)、profile 自体は再評価 skip
+- [x] **Comments**: schema (`comments` テーブル + migration 0004) + Add (`POST /articles/:slug/comments`) + Delete (`DELETE /articles/:slug/comments/:id`)。Show route で `getArticleBySlug + listComments` を `Promise.all` 並行呼出、author は `userRepo.findByIds` で bulk 解決 (articles と同じ pattern、relations 未使用維持)。`CommentView` に `isAuthor` flag を持たせて自分の comment にのみ Delete ボタン表示。CommentForm + CommentList は Show.tsx 内に inline (1 page 専用、別 component file は YAGNI)。未ログインは Sign in prompt で form 非表示。delete 時は service で `comment.articleId === article.id` を検証 (URL 改竄で他記事の comment を消されるのを防ぐ)
 
 ### 残タスク (RealWorld spec 順)
 
-1. **Comments**
-2. **Favorites** (favoritesCount / favorited / `?favorited=` filter / Favorite ボタン)
-3. **Tags** (tagList / `?tag=` filter / タグクラウド)
+1. **Favorites** (favoritesCount / favorited / `?favorited=` filter / Favorite ボタン)
+2. **Tags** (tagList / `?tag=` filter / タグクラウド)
 
 ### リファクタ候補
 
@@ -200,6 +206,12 @@ docs/
 - **Profile route は 2 service 並行呼出、profile service に統合せず** (2026-05-05): Profile page = profile + articles なので 2 つ data source が要る。選択肢は (a) `getProfile + listArticles` を route で `Promise.all` (b) `getProfileWithArticles` で 1 service にまとめる の 2 択。**(a) を採用**。理由: (1) profiles と articles は別 feature、service 層で混ぜると `profiles → articles` 依存が service 階層で発生して重い、(2) route が orchestration 責務 = まさにこの仕事、(3) 1 行 passthrough を作りたくない (規約 > YAGNI)。route から articles service を呼ぶのは Home (server.ts) と同じパターンなので統一感あり
 - **listArticles 入力型を HTTP schema 非依存に切り出し** (2026-05-05): `articlesQuerySchema` から `author` を削った副作用で、service の `Pick<ArticlesQuery, "limit" | "offset" | "author">` が成立しなくなる。**`Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` に変更**。これは「`author` は HTTP query 由来ではなく service 層の filter 引数」という事実を型で表現した形。schema (HTTP layer) と service input (service layer) は別の責務、というレイヤ分離が型に出る
 - **Profile のタブは無し (favorites 実装まで保留)** (2026-05-05): Conduit は Profile page に "My Articles" / "Favorited Articles" タブを並べるが、favorites 未実装なので 1 タブだけのタブ UI になる → 混乱の元 + YAGNI。今は記事一覧をベタ表示、favorites 実装するときに自然にタブ化する流れで進める。Zenn の "Articles / Books / Scraps" タブも複数 content type が揃ってから出てくる UI
+- **Comments の URL は spec 準拠で nested、GET は Show と統合** (2026-05-05): RealWorld spec の comment endpoint は `POST/GET/DELETE /articles/:slug/comments[/...]`。Inertia 化で GET (一覧取得) は不要に — Show route で article と一緒に load して Show page に inline 表示する方が自然。残るは POST (追加) と DELETE (削除) の 2 つ。slug を URL に含めるのは spec のまま (既に article scope の URL なので)、削除時は service で `comment.articleId === article.id` を検証して URL 改竄 (`/articles/foo/comments/<bar 記事の comment id>`) を弾く
+- **Comments の load は Show route で Promise.all 並走** (2026-05-05): Profile route の `getProfile + listArticles` と同じ pattern。article + comments は別 feature (articles と comments) なので service 層では混ぜず、route で orchestrate。1 page = 複数 service という構造が定着 (Home / Profile / Article Show が同形)
+- **CommentForm + CommentList は Show.tsx 内に inline** (2026-05-05): 別 component file (`CommentForm.tsx` / `CommentList.tsx`) に切り出さず、Show.tsx 内に function component として並べる。理由: (1) この 2 つは Article Show page でしか使わない (再利用予定なし)、(2) ファイル分割すると props 型 (slug / comments) を export し直す boilerplate が増える、(3) Show.tsx 全体で 130 行程度なら同居して読める。再利用機会が出たら切り出す (YAGNI)
+- **comment 削除認可は service で二重検証** (2026-05-05): `deleteComment(db, slug, commentId, viewerId)` で (a) slug → article 存在確認、(b) commentId → comment 存在 + `comment.articleId === article.id` 整合確認、(c) `comment.authorId === viewerId` 認可、の 3 段。(b) は URL 改竄 (`/articles/foo/comments/123` で 123 が別記事の comment) 対策、(c) は他人の comment を消されない対策。UI からは isAuthor=false で Delete ボタン非表示なので通常到達不可、API 直叩き対策 (self-follow と同じ二重防止のメンタルモデル)
+- **comment author の bulk 解決は articles と同じ pattern** (2026-05-05): `listByArticleId` で comments を取得 → 一意 authorId を抽出 → `userRepo.findByIds` で bulk 取得 → Map で紐付け。articles の `presentArticleList` と全く同じ手法。drizzle relations 入れれば `with: { author: true }` で 1 query にできるが、favorites の `?favorited=` filter で本格的に必要になるまで保留 (YAGNI)、今は手動 bulk で問題なし
+- **router.delete 後の useForm.errors 残存はハマりポイント** (2026-05-05): comment 投稿で validation error → 「body is required」が出てる状態で comment 削除 (`router.delete`) すると、削除成功後も「body is required」表示が残る。useForm の errors は `usePage().props.errors` の auto-merge で更新されるが、`router.delete` は useForm を経由しないので前の form errors が clear されない。実用上は次の投稿試行で上書きされるので許容 — Inertia の標準挙動で hono-ir 側の問題ではない。気になるなら `router.delete(..., { onSuccess: () => form.clearErrors() })` の手段あり
 
 その後 (大物):
 
@@ -212,62 +224,55 @@ docs/
 ## 次回への引き継ぎ
 
 ### 状態
-- main: `e01cd58 feat(profiles): Profile page に記事一覧を統合` (この後 docs commit が乗る予定、まとめて push)
+- main: 直前の `a5701f2 docs: Profile 記事一覧統合に合わせて引き継ぎメモを更新` の上に `feat(comments): ...` が乗る予定 (これから commit)
 - typecheck / build / Playwright 動作確認 全 OK:
-  - Profile page (`/profiles/settingsupdatederrortest`): bio + image + 記事一覧 (page 1 = 10 件、page 2 = 3 件、合計 13 件) + Pagination 動作確認
-  - Pagination link: `/profiles/settingsupdatederrortest?offset=10` (clean URL、partial reload で profile 自体は再評価 skip)
-  - Home `/?author=settingsupdatederrortest` (旧 URL): `author` が schema 削除されたので無視 → 全 13 件表示。フィルタ pill (`@username` 表示) も撤去済み
-- ローカル D1: user 12 = `settingsupdatederrortest`、password = `newpassword456` (前セッションから不変)。記事 13 件 (前セッションの seed): `Hello World` + `Test Article 1〜12`、全 author = user 12
+  - Article Show (`/articles/test-article-1`): comment 投稿 → 表示 → flash success → 削除 → No comments yet 復帰
+  - 空 body submit: `body is required` validation エラー (Inertia 流 redirect-back + useForm.errors マージ)
+  - 未ログイン: CommentForm 非表示、`Sign in to add comments.` prompt 表示
+  - 自分の comment にのみ Delete ボタン (article isAuthor と同 pattern)
+- ローカル D1: user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456` (前セッションと同じ。引き継ぎメモが email 間違ってたので訂正済み)。記事 13 件 (前セッションの seed): `Hello World` + `Test Article 1〜12`、全 author = user 12。comments テーブルは動作確認後 0 件 (削除済み)
 - dev server は止めた
 
-### 今日 (2026-05-05、Profile 統合) やったこと
+### 今日 (2026-05-05、Comments) やったこと
 
-選択肢 A (Profile に My Articles 統合) を片付け。1 commit:
+選択肢 A (Comments) を片付け。1 commit 予定:
 
-- `e01cd58` feat(profiles): Profile page に記事一覧を統合
+- `feat(comments): 記事へのコメント機能を追加` (これから commit)
 
-ポイント (Profile 統合):
-- **URL 設計の Y 選択 (`?author=` を schema レベルで削除)**: 当初 plan は「Home の `?author=` を活かしつつ Profile からの link で UI 動線を作る」だったが、あさひさんが Zenn `/{username}` の単純さに着目 → 「Profile = user hub」のメンタルモデルを採用。`articlesQuerySchema` から `author` field を撤去、Home の `query.author` UI bits も全削除。industry standard (GitHub / Twitter / Zenn / Qiita / Conduit) に揃う
-- **service 層の `listArticles` は author 引数を残す**: schema からは消えるが、Profile route が直接 `listArticles(db, { author: username, ... })` で呼ぶ形に。HTTP layer と service layer の責務分離。型は `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }` で表現
-- **Profile route は 2 service 並行呼出**: `getProfile + listArticles` を `Promise.all` で並走。profile service に統合せず route で orchestrate (1 行 passthrough を作らない、依存方向 simple)
-- **タブは作らず (favorites 実装まで保留)**: Conduit は My Articles / Favorited Articles 2 タブだが今は記事しか無い。1 タブだけのタブ UI は混乱の元、favorites 実装で自然にタブ化する流れに
-- **Pagination component は再利用**: `PARTIAL_KEYS = ["articles", "articlesCount", "query"]` が hardcoded で Home / Profile 共通。profile データは partial reload key に入ってないので再評価 skip され、ページ切替が軽い
+ポイント (Comments):
+- **schema 0004**: `comments` (id / body / articleId / authorId / createdAt / updatedAt)。articleId は ON DELETE CASCADE (記事削除で comment も自動削除)、authorId は ON DELETE 指定なし = articles と consistency (user 削除機能無いので restrict で OK)
+- **feature 一式新規**: `features/comments/` に validators / repository / service / view / index を articles と同形で作成。DB 操作は repository、orchestration (slug → article 解決 → comment 操作) は service、HTTP は index に分離
+- **Show route で article + comments を Promise.all 並走**: Profile route の `getProfile + listArticles` と同じ pattern。`getArticleBySlug + listComments` で並列 load → page props に `comments` 追加。N+1 回避は articles と同じ手動 bulk (drizzle relations 未使用維持)
+- **CommentForm + CommentList は Show.tsx に inline**: 別 component file 化せず Show.tsx 内に function component として並置 (1 page 専用、再利用なし、YAGNI)
+- **comment 削除は service で 3 段検証**: (a) article 存在 (b) comment 存在 + articleId 整合 (URL 改竄対策) (c) authorId 一致 (認可)。UI からは isAuthor=false で Delete ボタン非表示、API 直叩き対策で二重防止 (self-follow と同じメンタルモデル)
+- **未ログイン UX**: `useAuth().user` が null なら CommentForm 非表示で `Sign in to add comments.` link を出す。CommentList は閲覧可
 
-途中の議論ポイント:
-- 当初引き継ぎメモの書き方 (「Profile page で `?author=username` を内部的に効かせて」) があさひさんに「Home の `?author=` URL を Profile から link する案」に読まれた → 「いや、URL は `/profiles/:username` で、`?author=` は service 引数の名前」とすり合わせ → そこから「じゃあ schema から `author` 削っちゃっていい (Y)」という話になり、Y で進行
-- 「タブいる？」「`listArticles` の author 引数残す？」「route で 2 service 並べる vs 統合 service」の 3 つを Q1/Q2/Q3 として整理してから着手
-
-### 直前の議論で決まったこと
-
-- **Profile = user hub (URL は `/profiles/:username` 一本)**: industry standard に揃える。`?author=` は Home から完全消去 (schema レベル)
-- **`articlesQuerySchema` から `author` 削除**: HTTP query で受けるのは Home が `{ limit, offset, tab }` のみ
-- **`profileArticlesQuerySchema = articlesQuerySchema.pick({limit, offset})`**: pick で derive、preprocess / coerce 設定を再利用
-- **`listArticles` 入力型は schema 非依存**: `Pick<ArticlesQuery, "limit" | "offset"> & { author?: string }`。service layer の filter 引数として `author` は残る
-- **Profile route で 2 service 並行**: `Promise.all([getProfile, listArticles])`、profile service に統合しない
-- **タブ無し**: favorites 実装まで保留
+途中の判断:
+- 別 user 作って「他人の comment では Delete ボタン非表示」を Playwright で検証するか迷ったが、isAuthor flag は articles と同じシンプルな実装で article 側で動作確認済み → 時間 vs 網羅性のトレードオフで省略
+- `router.delete` 後に直前の form validation error が残るハマりポイントを発見、判断記録に追加 (Inertia 標準挙動)
 
 ### 次セッション最初の一手
 
 選択肢:
 
-**A. Comments**
-- 残タスク #1。spec 順の素直な次
-- Show.tsx (Articles) に CommentForm + CommentList を追加。signup / Update User で踏んだ form 連携パターンの繰り返し
-- schema: `comments` テーブル (id / body / articleId / authorId / createdAt / updatedAt)。author の bulk 解決は articles と同じ手法
-- Inertia 流: comment POST → redirect-back で同じ article page に戻る、shared data の `errors` で form エラー、`success` flash で通知
-
-**B. Favorites**
-- 残タスク #2
+**A. Favorites**
+- 残タスク #1
 - schema: `favorites` テーブル (userId / articleId、composite PK or unique)。articles の view layer に `favoritesCount` / `favorited` を join
 - UI: Favorite ボタン (Article Show / ArticleCard 双方)、Profile に "Favorited Articles" タブ追加 → ようやくタブ UI が活きる
-- N+1 回避が複雑化する分岐点。drizzle relations を本格的に入れるかの判断ポイント (Q1: relations vs 手動 bulk、Q2: count を articles テーブル denormalize vs query 都度集計)
+- N+1 回避が複雑化する分岐点。drizzle relations を本格的に入れるかの判断ポイント (Q1: relations vs 手動 bulk、Q2: count を articles テーブル denormalize vs query 都度集計)。comments と違って articles 一覧 / Profile / Show 全部に joining が要るので影響範囲広め
+
+**B. Tags**
+- 残タスク #2
+- schema: `tags` (id / name unique) + `article_tags` (articleId / tagId, composite PK)。記事 create / update 時に tag を upsert + 紐付け
+- UI: tag input (CSV-like の "react,typescript" 入力 → split)、Article Show / ArticleCard に tag 表示、Home に `?tag=` filter (タグクラウドはオプション)
+- favorites より独立度高め (記事との関係のみ、user 関係なし)。先にこっちでも筋通る
 
 **C. Phase 3: upstream PR**
 - `@hono/inertia` への shared data + errors 自動配信 + `c.back` 風 helper の提案
 - 動作確認は十分積んだので、PR のコード本体は user-land 実装の切り出しのみ
 - 保管場所 (cookie 1 本同居 vs 別) の議論が PR 設計時に再浮上、Workers の session 設計と一緒に詰める方針
 
-A は spec 順の素直、B は本格的な複雑性の入口 (relations 検討タイミング)、C は集大成を外に出す。あさひさんに選んでもらう。
+順番案: A → B (favorites のタブ化を済ませてから tags が自然) も、B → A (関係簡単な方から) もあり。C はいつでも入れられる集大成。あさひさんに選んでもらう。
 
 ### コーチモードで進行中
 
