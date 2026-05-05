@@ -27,11 +27,7 @@ export async function addComment(
 
 // 記事に紐づく comment 一覧 + 各 comment の author を bulk 解決して view 化。
 // articles 側の presentArticleList と同じ N+1 回避パターン
-export async function listComments(
-  db: Db,
-  slug: string,
-  viewerId: number | undefined,
-) {
+export async function listComments(db: Db, slug: string) {
   const article = await articleRepo(db).findBySlug(slug);
   if (!article) return { kind: "article_not_found" as const };
 
@@ -46,7 +42,7 @@ export async function listComments(
     const author = authorById.get(c.authorId);
     // FK 制約で author は必ず存在するはず
     if (!author) throw new Error("author not found");
-    return toCommentView(c, author, viewerId);
+    return toCommentView(c, author);
   });
 
   return { kind: "ok" as const, comments: view };

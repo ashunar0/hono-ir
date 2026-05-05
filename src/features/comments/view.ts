@@ -4,7 +4,9 @@ type Comment = typeof comments.$inferSelect;
 type User = typeof users.$inferSelect;
 
 // Inertia page に渡す comment の形。
-// Date を ISO string、author の機密 field 除外、isAuthor は viewer 文脈の自分判定
+// Date を ISO string、author の機密 field 除外。
+// 「自分の comment か」は client 側で useAuth() と author.username で判定するので
+// view 層には viewer 文脈を持ち込まない (favorited/following のような関係性ではないため)
 export type CommentView = {
   id: number;
   body: string;
@@ -15,14 +17,9 @@ export type CommentView = {
     bio: string | null;
     image: string | null;
   };
-  isAuthor: boolean;
 };
 
-export function toCommentView(
-  comment: Comment,
-  author: User,
-  viewerId: number | undefined,
-): CommentView {
+export function toCommentView(comment: Comment, author: User): CommentView {
   return {
     id: comment.id,
     body: comment.body,
@@ -33,6 +30,5 @@ export function toCommentView(
       bio: author.bio,
       image: author.image,
     },
-    isAuthor: viewerId !== undefined && comment.authorId === viewerId,
   };
 }

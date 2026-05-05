@@ -101,45 +101,50 @@ function CommentList({
   slug: string;
   comments: CommentView[];
 }) {
+  const { user } = useAuth();
+
   if (comments.length === 0) {
     return <p style={{ color: "#666" }}>No comments yet.</p>;
   }
 
   return (
     <ul style={{ listStyle: "none", padding: 0 }}>
-      {comments.map((comment) => (
-        <li
-          key={comment.id}
-          style={{
-            border: "1px solid #ddd",
-            padding: "0.75rem",
-            marginBottom: "0.5rem",
-          }}
-        >
-          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{comment.body}</p>
-          <p style={{ color: "#666", fontSize: "0.875rem", marginTop: "0.5rem" }}>
-            by {comment.author.username} ·{" "}
-            {new Date(comment.createdAt).toLocaleDateString()}
-            {comment.isAuthor && (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm("コメントを削除しますか？")) {
-                      router.delete(
-                        `/articles/${slug}/comments/${comment.id}`,
-                      );
-                    }
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </p>
-        </li>
-      ))}
+      {comments.map((comment) => {
+        const isAuthor = comment.author.username === user?.username;
+        return (
+          <li
+            key={comment.id}
+            style={{
+              border: "1px solid #ddd",
+              padding: "0.75rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{comment.body}</p>
+            <p style={{ color: "#666", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+              by {comment.author.username} ·{" "}
+              {new Date(comment.createdAt).toLocaleDateString()}
+              {isAuthor && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("コメントを削除しますか？")) {
+                        router.delete(
+                          `/articles/${slug}/comments/${comment.id}`,
+                        );
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </p>
+          </li>
+        );
+      })}
     </ul>
   );
 }

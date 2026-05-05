@@ -104,7 +104,7 @@ const app = new Hono<Env>()
 
     const [articleResult, commentsResult] = await Promise.all([
       getArticleBySlug(db, slug),
-      listComments(db, slug, viewerId),
+      listComments(db, slug),
     ]);
 
     if (articleResult.kind === "not_found") return c.notFound();
