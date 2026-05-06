@@ -217,6 +217,28 @@ inline style の値 (`#bbb` / `#666` / `0.85rem` / `0.15rem` / `0.6rem` / `4px` 
 
 副次効果として **`<main>` と `<FlashMessages />` の重複を 8 page 全部から撤去**、Home の auth nav も AppLayout に移動。`page = content` / `layout = chrome` の責務分離が成立。判断軸: 「ヘッダー部分にユーザー情報を常に出したい」というユーザー指示が直接動機、Inertia の persistent layout は **navigation 時に layout component が unmount されない** ので将来 sidebar の折り畳み state 等を持たせても navigate で消えない。`<h1>` (page hero) は AppLayout の site title (小さい link) と分けて各 page に残す (Conduit / Zenn / Qiita のような site title small / page heading large の流派)。
 
+### Comment add/delete も useOptimistic 化、Favorite と対照
+Favorite で導入した `useOptimistic` + `startTransition` + `visit` ラッパーの pattern を Comment add/delete にも適用。Favorite が **1 つの state + 1 つの reducer (action 引数なし、toggle のみ)** だったのに対し、Comment は **1 つの state + 1 つの reducer + union action (`{type: "add"|"remove"}`)**。「同じ data を触る複数 action」を 1 個の useOptimistic に集約する形が Favorite の延長として綺麗 (state を分けると add 中に delete されたら…の整合性議論が出る)。
+
+#### temp id は negative number (`-Date.now()`)
+新規 comment は server 採番される (DB の AUTOINCREMENT)。楽観挿入時には id が分からないので **fake id** が要る。選択肢は (a) negative number (b) string flag (c) Date.now() のまま、で **(a) を採用**:
+- (a) `id: number` の型を維持 (`CommentView.id: number` を変えなくていい)
+- pending 判定は `comment.id < 0` の 1 行で済む
+- DB 採番は AUTOINCREMENT で正の int しか出ないので衝突しない
+- (b) は `id: number | string` に広げる必要があり narrow が要る、(c) は採番値と衝突可能性ゼロではない
+
+#### CommentForm + CommentList を CommentsSection に統合
+useOptimistic の state を form と list で**共有**する必要がある (form submit で add、list の delete ボタンで remove)。owner は片方の component に持たせず、両方を抱える 1 つの上位 component にする。Show.tsx 内 inline の small component 2 個 → 1 個になっただけ、YAGNI 的にも素直。state の owner = action の dispatcher = 描画責任者 が一致する。
+
+#### pending な temp comment は opacity-50 + Delete ボタン無し
+ユーザー指示 (普通のアプリで "ちょっと薄くなったやつがローディング中みたい" になる挙動) を実装。`comment.id < 0` で gate して Delete ボタン非表示 (server 採番前の id を delete に渡せないので 404 になる)。`opacity-50` で半透明、author 表示・本文・日付は残すので「投稿が反映されてる感」は出る。server 応答で props 更新 → temp は base state (props) に置き換わって本物 id 付きで再描画 → opacity 戻る + Delete ボタン出現、の自然な流れ。
+
+#### form.post の callback API ではなく自前 visit.post
+従来の `form.post(url, { onSuccess: () => form.reset(...) })` は `useTransition` 内で await できない。`visit.post(url, data, opts)` で Promise 化したものを `await` し、`startTransition(async () => { dispatchOptimistic(...); form.reset(...); await visit.post(...) })` の形にする。**form.reset は dispatchOptimistic の直後**、await の前に呼ぶ (textarea を即座に空にしたい)。Phase 3 PR で `@inertiajs/core` 本体に Promise 化 API を入れる素材として既に用意済み。
+
+#### partial reload key は `["comments", "flash"]`
+comment 投稿/削除で取り直したいのは comments props と flash (server 側で `setFlash("コメントを投稿しました")` 等を出してるので)。article 本体や favorites count は変わらないので skip、sharedData の `auth` 等の closure も評価 skip。Favorite の `["article"]` と同じく only を絞ることで往復のコストを最小化。
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR

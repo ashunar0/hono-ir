@@ -2,7 +2,7 @@
 
 hono-ir の進捗 + これからやること + セッション間引き継ぎ。CLAUDE.md からは pointer のみ。
 
-## 実装状況 (2026-05-06 時点、Tags + Optimistic UI → RealWorld spec 機能完成 + 楽観的更新 + UI 整え)
+## 実装状況 (2026-05-06 時点、Tags + Optimistic UI → RealWorld spec 機能完成 + 楽観的更新 + UI 整え + Comment optimistic)
 
 ### 完了
 
@@ -36,6 +36,7 @@ hono-ir の進捗 + これからやること + セッション間引き継ぎ。
 - [x] **Tailwind v4 導入 + inline style 全廃**: `@tailwindcss/vite` plugin + `@import "tailwindcss/utilities.css"` で **preflight skip** (browser default を活かす方針)。全 components / pages を inline `style={{...}}` から Tailwind class に置換。preset に無い色/寸法は arbitrary value (`text-[#666]` `border-[#bbb]` `text-[0.85rem]` 等) で exact 維持、後で preset に寄せる判断は別軸
 - [x] **Form wireframe 整え**: 全 form (New / Edit / Settings / Login / Register / Show.tsx の CommentForm) を「Figma 配置だけ決める段階」相当に整える。共通 pattern (`max-w-md flex flex-col gap-4`、label を input の上に flex-col、input は `block w-full px-2 py-1`、submit は `self-start`) で統一。色 / 影 / hover effect は意図的に保留 (wireframe → mockup は別タスク)
 - [x] **AppLayout (Inertia persistent layout)**: `app/layouts/AppLayout.tsx` 新設、`src/client.tsx` で `page.default.layout` に default 注入。header (site title `Real World` link + auth nav) と main wrapper と FlashMessages を集約、各 page は content だけ返す形に。`<main>` / `<FlashMessages />` を 8 page 全部から撤去、Home の auth nav も AppLayout に移動。**page = content / layout = chrome の責務分離が成立**
+- [x] **Comment add/delete を useOptimistic 化 (H4)**: Favorite で導入した pattern を Comment にも適用。Show.tsx 内 inline の CommentForm + CommentList を **CommentsSection 1 つに統合** して useOptimistic state を共有。Favorite が「1 state + 1 reducer (toggle のみ)」なのに対し Comment は「1 state + 1 reducer + union action `{type: "add"|"remove"}`」(同じ data を触る複数 action を 1 個に集約)。temp comment の id は **`-Date.now()` の negative number** (`id: number` 型維持、pending 判定は `id < 0` 1 行、AUTOINCREMENT と衝突しない)。pending 中は **opacity-50 で薄く + Delete ボタン非表示** (`comment.id < 0` で gate、server 採番前の id を delete に渡せないので 404 防止)。submit は `startTransition` 内で `dispatchOptimistic + form.reset + visit.post` を await。partial reload key は `["comments", "flash"]`
 
 ### リファクタ候補
 
@@ -47,11 +48,11 @@ hono-ir の進捗 + これからやること + セッション間引き継ぎ。
 ## 次回への引き継ぎ
 
 ### 状態
-- main: 本セッションで TagPill 抽出 + Tailwind v4 導入 + form wireframe 整え + AppLayout 導入の 5 commit を積んだ。push 後の最新 commit hash は次セッションで `git log --oneline -10` で確認
-- typecheck / build OK、Playwright で動作確認実施済み:
-  - Home / Profile / Show / Settings / New / Edit のすべての page で header (site title `Real World` + auth nav) が persistent 表示
-  - Form 全種 (Settings / New / Edit / Show CommentForm) で wireframe pattern (label 上 / input full-width / 各 field gap) 適用済み
-  - 既存機能 (Favorite / Follow / tag pill click filter / Pagination) もすべて維持
+- main: 前セッションで TagPill / Tailwind / form wireframe / AppLayout の 5 commit を積み、本セッションで Comment optimistic UI の commit を追加。push 後の最新 commit hash は次セッションで `git log --oneline -10` で確認
+- typecheck OK、Playwright で動作確認実施済み:
+  - Test Article 1 で `最初のコメント (optimistic test)` を投稿 → 即時表示 → flash「コメントを投稿しました」→ Delete で消去
+  - 連続投稿 (1 つ目 → 2 つ目) も正常、片方ずつ Delete してリストが正しく縮む
+  - Optimistic 中の opacity-50 状態はローカルだと server が速すぎて瞬間的にしか出ないが、コード上の挙動は明らか (本物 server や遅延 network で出る)
 - ローカル D1 状態は前回と同じ (user 12 = `settingsupdatederrortest` / email `settings@example.com` / password `newpassword456`、記事 14 件、tags table に `react` `d1` の orphan 残存)
 - **dev server は起動したまま** (Playwright で確認した状態)。次セッション開始前に `bun run dev` の状態確認 → 動いてなければ再起動
 
@@ -100,12 +101,24 @@ Optimistic UI 完了後、コード品質を高める作業に話題転回。「
 
 判断記録の追加分は `docs/decisions.md` の 2026-05-06 セクション末尾参照 (TagPill 共通化 / Tailwind v4 + preflight skip / arbitrary value 1:1 翻訳 / Form wireframe レベル / AppLayout)。
 
+#### 2026-05-06 (続続続: Comment Optimistic UI — H4)
+
+UI cleanup 完了後、roadmap の H4 (Comment add/delete に useOptimistic) に着手。
+
+- **Favorite と対照する設計** をユーザー側から提案: Favorite が「1 state + 1 reducer (toggle のみ)」だったのと**対照** で揃える方が綺麗 → Comment は「1 state + 1 reducer + union action `{type: "add" | "remove"}`」で同じ data を 1 個の useOptimistic に集約
+- **temp id は negative number** (`-Date.now()`): `id: number` の型維持 + pending 判定 1 行 (`id < 0`) + AUTOINCREMENT と衝突しない
+- **CommentForm + CommentList → CommentsSection 統合**: useOptimistic state を form と list で共有する owner が要る、Show.tsx 内 inline の small component 2 個 → 1 個になっただけで YAGNI 的にも素直
+- **pending comment は opacity-50 + Delete ボタン無し**: ユーザー指示「普通のアプリで薄くなったやつがローディング中みたいになる挙動」を実装、`comment.id < 0` で gate
+- **submit は visit.post を await**: `form.post` の callback API は `useTransition` で await できないので Promise 化済みの `visit.post` を `startTransition(async () => { dispatchOptimistic + form.reset + await visit.post })` で組む
+- **partial reload key は `["comments", "flash"]`**: comments 取り直し + 「コメントを投稿しました/削除しました」flash を server から受ける、article / favorites / sharedData closure は skip
+
+判断記録の追加分は `docs/decisions.md` の 2026-05-06 セクション末尾参照 (Comment add/delete useOptimistic + 5 つの subsection)。
+
 ### 次セッション最初の一手
 
-RealWorld spec 機能 + Optimistic UI まで完成 ✓。残る選択肢:
+RealWorld spec 機能 + Favorite/Follow Optimistic + Comment Optimistic まで完成 ✓。残る選択肢:
 
 **H. フロント rendering 制御の続き** ← Optimistic UI の延長線
-- **H4. Comment add/delete に `useOptimistic`** — delete は Favorite と同じ pattern、**add は fake ID 議論** が出る (新規 comment に temp id 振って楽観挿入 → server 応答で本物 id に置換)。TanStack Query の `useMutation` `onMutate` 的な pattern を React 19 で書く題材
 - **H5. Inertia の `deferred` props を試す** — Show ページで comments を後流し (article 先 + comments 後、Astro Server Islands / RSC Streaming 的)。Popular Tags サイドバー (Home) も deferred 候補
 - **H6. `mergeProps` で infinite scroll** — Pagination を「Load more」ボタン + 配列 append 型に。TanStack の `useInfiniteQuery` 的体験を Inertia で表現
 - **H7. `@inertiajs/progress`** — グローバル progress bar、1 行で入る
@@ -133,7 +146,7 @@ RealWorld spec 機能 + Optimistic UI まで完成 ✓。残る選択肢:
 - 今は wireframe レベル (配置 + サイズ感のみ、色 / 影 / hover effect 無し)。本格的に見栄え良くするなら Conduit-like な color palette + form input の focus ring + button hover state + サイドバーや tag pill の色味調整
 - 「個人開発で見せられるレベルにしたい」が動機になるなら筋、機能要件は満たしてるので必須ではない
 
-H4 → H5 → H6 → B → C が筋 (フロント側で Optimistic + deferred + mergeProps を一通り体験 → Phase 3 PR で総仕上げ → 404 は仕上げ)。D / E は気になったら都度。
+H5 → H6 → B → C が筋 (フロント側で deferred + mergeProps を体験 → Phase 3 PR で総仕上げ → 404 は仕上げ)。D / E は気になったら都度。
 
 ### コーチモードで進行中
 

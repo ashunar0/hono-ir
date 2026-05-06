@@ -95,7 +95,7 @@ app/
     Users/Login.tsx    # FlashMessages 含む (logout 後 redirect 先)
     Articles/New.tsx   # 記事新規作成 form (useForm flat) + TagInput
     Articles/Edit.tsx  # 記事編集 form + TagInput (article.tagList 初期値)
-    Articles/Show.tsx  # 記事表示 + tag pill + Comments セクション (CommentForm + CommentList を inline、未ログインは Sign in prompt)
+    Articles/Show.tsx  # 記事表示 + tag pill + Comments セクション (CommentsSection を inline、useOptimistic で楽観的 add/delete、temp は id<0 + opacity-50、未ログインは Sign in prompt)
     Profiles/Show.tsx  # プロフィール表示 + タブ (My Articles / Favorited Articles) + 記事一覧 + Pagination
   components/
     FlashMessages.tsx  # flash の success / error を color-coded 表示する共通 component
@@ -147,6 +147,7 @@ docs/
    - `drizzle/meta/_journal.json` から該当 entry を削除
    - schema.ts から該当変更を revert
    - 適用済みの場合は `wrangler d1 execute hono-ir --local --command="ALTER TABLE ... DROP COLUMN ..."` + `DELETE FROM d1_migrations WHERE name='000X_....sql'`
+7. Playwright使用時にスクリーンショット不要
 
 ## Git 運用
 
