@@ -1,8 +1,7 @@
-import { Link, router } from "@inertiajs/react";
+import { Link } from "@inertiajs/react";
 import type { ArticleListView } from "../../src/features/articles/view";
 import type { ArticlesQuery } from "../../src/features/articles/validators";
 import { ArticleCard } from "../components/ArticleCard";
-import { FlashMessages } from "../components/FlashMessages";
 import { Pagination } from "../components/Pagination";
 import { useAuth } from "../lib/use-auth";
 
@@ -42,29 +41,7 @@ export default function Home({
   const isFeedActive = query.tab === "feed";
 
   return (
-    <main>
-      <FlashMessages />
-      <nav className="mb-4">
-        {user ? (
-          <>
-            <span>Logged in as {user.username}</span>
-            {" | "}
-            <Link href="/articles/new">New article</Link>
-            {" | "}
-            <Link href="/settings">Settings</Link>
-            {" | "}
-            <button type="button" onClick={() => router.post("/logout")}>
-              Logout
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href="/login">Login</Link>
-            {" | "}
-            <Link href="/register">Register</Link>
-          </>
-        )}
-      </nav>
+    <>
       <h1>Hono × Inertia × React Tutorial</h1>
 
       {/* タブ。tag filter active 時は 3 つ目に Tag Feed を出す (Conduit 流派) */}
@@ -149,6 +126,6 @@ export default function Home({
           </aside>
         )}
       </div>
-    </main>
+    </>
   );
 }

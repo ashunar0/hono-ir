@@ -1,5 +1,4 @@
 import { useForm } from "@inertiajs/react";
-import { FlashMessages } from "../../components/FlashMessages";
 import { useAuth } from "../../lib/use-auth";
 
 export default function Settings() {
@@ -18,8 +17,7 @@ export default function Settings() {
   if (!user) return null;
 
   return (
-    <main>
-      <FlashMessages />
+    <>
       <h1>Your Settings</h1>
       <form
         noValidate
@@ -107,6 +105,6 @@ export default function Settings() {
           Update Settings
         </button>
       </form>
-    </main>
+    </>
   );
 }

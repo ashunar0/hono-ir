@@ -5,7 +5,6 @@ import { visit } from "../../lib/inertia-router";
 import type { ProfileArticlesQuery } from "../../../src/features/articles/validators";
 import type { ProfileView } from "../../../src/features/profiles/view";
 import { ArticleCard } from "../../components/ArticleCard";
-import { FlashMessages } from "../../components/FlashMessages";
 import { Pagination } from "../../components/Pagination";
 import { useAuth } from "../../lib/use-auth";
 
@@ -69,8 +68,7 @@ export default function Show({
   ];
 
   return (
-    <main>
-      <FlashMessages />
+    <>
       <article>
         {profile.image && (
           <img
@@ -150,6 +148,6 @@ export default function Show({
       <p className="mt-8">
         <Link href="/">← Home</Link>
       </p>
-    </main>
+    </>
   );
 }

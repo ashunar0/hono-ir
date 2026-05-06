@@ -1,6 +1,5 @@
 import { useForm } from "@inertiajs/react";
 import type { ArticleView } from "../../../src/features/articles/view";
-import { FlashMessages } from "../../components/FlashMessages";
 import { TagInput } from "../../components/TagInput";
 
 type Props = { article: ArticleView };
@@ -14,8 +13,7 @@ export default function Edit({ article }: Props) {
   });
 
   return (
-    <main>
-      <FlashMessages />
+    <>
       <h1>Edit article</h1>
       <form
         onSubmit={(e) => {
@@ -84,6 +82,6 @@ export default function Edit({ article }: Props) {
           Update
         </button>
       </form>
-    </main>
+    </>
   );
 }

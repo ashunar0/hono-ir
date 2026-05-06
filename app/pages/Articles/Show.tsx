@@ -2,7 +2,6 @@ import { Link, router, useForm } from "@inertiajs/react";
 import type { CommentView } from "../../../src/features/comments/view";
 import type { ArticleView } from "../../../src/features/articles/view";
 import { FavoriteButton } from "../../components/FavoriteButton";
-import { FlashMessages } from "../../components/FlashMessages";
 import { TagPill } from "../../components/TagPill";
 import { useAuth } from "../../lib/use-auth";
 
@@ -14,8 +13,7 @@ type Props = {
 
 export default function Show({ article, isAuthor, comments }: Props) {
   return (
-    <main>
-      <FlashMessages />
+    <>
       <article>
         <h1>{article.title}</h1>
         <div className="flex justify-between items-center text-[#666]">
@@ -70,7 +68,7 @@ export default function Show({ article, isAuthor, comments }: Props) {
       <p className="mt-8">
         <Link href="/">← Home</Link>
       </p>
-    </main>
+    </>
   );
 }
 

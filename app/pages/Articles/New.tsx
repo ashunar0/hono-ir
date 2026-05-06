@@ -1,5 +1,4 @@
 import { useForm } from "@inertiajs/react";
-import { FlashMessages } from "../../components/FlashMessages";
 import { TagInput } from "../../components/TagInput";
 
 export default function New() {
@@ -11,8 +10,7 @@ export default function New() {
   });
 
   return (
-    <main>
-      <FlashMessages />
+    <>
       <h1>New article</h1>
       <form
         onSubmit={(e) => {
@@ -81,6 +79,6 @@ export default function New() {
           Publish
         </button>
       </form>
-    </main>
+    </>
   );
 }

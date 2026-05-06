@@ -1,5 +1,4 @@
 import { useForm } from "@inertiajs/react";
-import { FlashMessages } from "../../components/FlashMessages";
 
 export default function Register() {
   const form = useForm({
@@ -9,8 +8,7 @@ export default function Register() {
   });
 
   return (
-    <main>
-      <FlashMessages />
+    <>
       <h1>Sign up</h1>
       <form
         onSubmit={(e) => {
@@ -69,6 +67,6 @@ export default function Register() {
           Sign up
         </button>
       </form>
-    </main>
+    </>
   );
 }
