@@ -47,36 +47,18 @@ export function TagInput({ value, onChange }: Props) {
         onKeyDown={onKeyDown}
         onBlur={() => addTag(draft)}
       />
-      <div style={{ marginTop: "0.4rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+      <div className="mt-[0.4rem] flex flex-wrap gap-[0.4rem]">
         {value.map((tag) => (
           <span
             key={tag}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              padding: "0.15rem 0.5rem",
-              borderWidth: "1px",
-              borderStyle: "solid",
-              borderColor: "#aaa",
-              borderRadius: "999px",
-              fontSize: "0.85rem",
-              background: "#f5f5f5",
-            }}
+            className="inline-flex items-center gap-1 px-2 py-[0.15rem] text-[0.85rem] rounded-full border border-[#aaa] bg-[#f5f5f5]"
           >
             {tag}
             <button
               type="button"
               onClick={() => removeTag(tag)}
               aria-label={`remove ${tag}`}
-              style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                fontSize: "0.85rem",
-                lineHeight: 1,
-                padding: 0,
-              }}
+              className="border-0 bg-transparent cursor-pointer text-[0.85rem] leading-none p-0"
             >
               ×
             </button>

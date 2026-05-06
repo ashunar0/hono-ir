@@ -1,1 +1,9 @@
-@import "tailwindcss";
+/*
+  preflight (CSS reset) は読み込まない。browser default を活かしつつ
+  utility class だけ Tailwind から取り込むスタイル。
+  https://tailwindcss.com/docs/preflight#disabling-preflight
+*/
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);

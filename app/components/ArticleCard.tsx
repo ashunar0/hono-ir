@@ -8,26 +8,13 @@ const PARTIAL_KEYS = ["articles", "articlesCount", "query"];
 
 export function ArticleCard({ article }: { article: ArticleListView }) {
   return (
-    <article
-      style={{
-        borderBottom: "1px solid #ddd",
-        padding: "1rem 0",
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "0.5rem",
-          fontSize: "0.9rem",
-        }}
-      >
+    <article className="border-b border-[#ddd] py-4">
+      <header className="flex justify-between items-center mb-2 text-[0.9rem]">
         <div>
           <Link href={`/profiles/${article.author.username}`}>
             @{article.author.username}
           </Link>
-          <span style={{ marginLeft: "0.5rem", color: "#888" }}>
+          <span className="ml-2 text-[#888]">
             {new Date(article.createdAt).toLocaleDateString()}
           </span>
         </div>
@@ -40,32 +27,15 @@ export function ArticleCard({ article }: { article: ArticleListView }) {
       </header>
       <Link
         href={`/articles/${article.slug}`}
-        style={{ color: "inherit", textDecoration: "none" }}
+        className="text-inherit no-underline"
       >
-        <h2 style={{ margin: "0 0 0.25rem 0" }}>{article.title}</h2>
-        <p style={{ margin: 0, color: "#555" }}>{article.description}</p>
+        <h2 className="m-0 mb-1">{article.title}</h2>
+        <p className="m-0 text-[#555]">{article.description}</p>
       </Link>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: "0.5rem",
-          fontSize: "0.85rem",
-        }}
-      >
+      <div className="flex justify-between items-center mt-2 text-[0.85rem]">
         <Link href={`/articles/${article.slug}`}>Read more...</Link>
         {article.tagList.length > 0 && (
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.3rem",
-            }}
-          >
+          <ul className="list-none m-0 p-0 flex flex-wrap gap-[0.3rem]">
             {article.tagList.map((tag) => (
               <li key={tag}>
                 <TagPill tag={tag} size="sm" />

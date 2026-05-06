@@ -10,26 +10,10 @@ type Props = {
   only: string[];
 };
 
-const baseStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.25rem",
-  padding: "0.25rem 0.5rem",
-  fontSize: "0.85rem",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "#ccc",
-  borderRadius: 4,
-  background: "transparent",
-  cursor: "pointer",
-} as const;
-
-const activeStyle = {
-  ...baseStyle,
-  background: "#ffe5e5",
-  borderColor: "#e57373",
-  color: "#c62828",
-} as const;
+const BASE = "inline-flex items-center gap-1 px-2 py-1 text-[0.85rem] border rounded-[4px] bg-transparent";
+const baseClass = `${BASE} border-[#ccc] cursor-pointer`;
+const activeClass = `${BASE} border-[#e57373] bg-[#ffe5e5] text-[#c62828] cursor-pointer`;
+const guestClass = `${BASE} border-[#ccc] cursor-default text-[#888]`;
 
 export function FavoriteButton({
   slug,
@@ -50,11 +34,7 @@ export function FavoriteButton({
 
   // 未ログインは押せないが count は読めるように静的表示
   if (!user) {
-    return (
-      <span style={{ ...baseStyle, cursor: "default", color: "#888" }}>
-        ♡ {favoritesCount}
-      </span>
-    );
+    return <span className={guestClass}>♡ {favoritesCount}</span>;
   }
 
   const handleClick = () => {
@@ -74,7 +54,7 @@ export function FavoriteButton({
     <button
       type="button"
       onClick={handleClick}
-      style={optimistic.favorited ? activeStyle : baseStyle}
+      className={optimistic.favorited ? activeClass : baseClass}
     >
       {optimistic.favorited ? "♥" : "♡"} {optimistic.favoritesCount}
     </button>
