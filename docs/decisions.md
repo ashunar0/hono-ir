@@ -239,6 +239,17 @@ useOptimistic の state を form と list で**共有**する必要がある (fo
 #### partial reload key は `["comments", "flash"]`
 comment 投稿/削除で取り直したいのは comments props と flash (server 側で `setFlash("コメントを投稿しました")` 等を出してるので)。article 本体や favorites count は変わらないので skip、sharedData の `auth` 等の closure も評価 skip。Favorite の `["article"]` と同じく only を絞ることで往復のコストを最小化。
 
+### 404 page を Inertia 流に (C)
+
+#### `app.notFound` で `c.render("Errors/NotFound", {})`
+従来 13 箇所の `c.notFound()` (sub-app の articles / comments / favorites / profiles) は plain text の "404 Not Found" を返してたが、Hono の `c.notFound()` はトップレベル `app.notFound(handler)` を踏むので、handler 側で Inertia render するだけで全 callsite が Inertia page に切り替わる (sub-app 個別の修正不要)。AppLayout も自動で乗るので header / nav も維持される。
+
+#### status は `c.status(404)` で明示
+`c.render` は内部で 200 を返すので、handler 先頭で `c.status(404)` を呼んで上書き。Inertia partial response (X-Inertia: true) でも Hono の status はそのまま透過するので、curl で `404 Not Found + x-inertia: true + body は { component: "Errors/NotFound", ... }` の形になる。ブラウザ直叩きは HTML rendering で 404 + AppLayout 込みの page、Inertia client-side 遷移は JSON で受けて再 render、どちらも自然に動く。
+
+#### `NotFoundHandler` 型は `as unknown as` で cast
+hono の `NotFoundResponse` 型は `TypedResponse<string, 404, "text">` 固定 (text/404 を期待)、`@hono/inertia` の `c.render` は `TypedResponse<{...}, 200, "html">` を返すので構造が合わない。実態としては「404 status + html body」を返す妥当な response だが、型上は完全に別物なので `as unknown as NotFoundHandler<Env>` で handler ごと cast する。`as Response` だけだと `_data / _status / _format` が無いと弾かれる。**adapter (@hono/inertia) 側で notFound 用の typed render API を提供すべき** (Phase 3 PR 候補)。
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR

@@ -1,5 +1,6 @@
 import { inertia } from "@hono/inertia";
 import { type Context, Hono } from "hono";
+import type { NotFoundHandler } from "hono/types";
 import { createDb } from "./db/client";
 import articles from "./features/articles";
 import { feedArticles, listArticles } from "./features/articles/service";
@@ -46,6 +47,13 @@ app.use(inertia({ rootView }));
 app.use(inertiaHelpers());
 app.use(loadAuth);
 app.use(sharedData<Env>(share));
+
+// sub-app の c.notFound() もここに合流する。c.render は内部で 200 を返すので status を上書き。
+// hono の NotFoundResponse 型は text/404 固定なので Inertia render を流すには handler ごと cast
+app.notFound(((c: Context<Env>) => {
+  c.status(404);
+  return c.render("Errors/NotFound", {});
+}) as unknown as NotFoundHandler<Env>);
 
 const routes = app
   // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、tag filter / pagination は query で受ける
