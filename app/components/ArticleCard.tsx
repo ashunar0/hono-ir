@@ -1,6 +1,7 @@
 import { Link } from "@inertiajs/react";
 import type { ArticleListView } from "../../src/features/articles/view";
 import { FavoriteButton } from "./FavoriteButton";
+import { TagPill } from "./TagPill";
 
 // 一覧 page (Home / Profile) で使うので partial reload は同じ keys
 const PARTIAL_KEYS = ["articles", "articlesCount", "query"];
@@ -67,22 +68,7 @@ export function ArticleCard({ article }: { article: ArticleListView }) {
           >
             {article.tagList.map((tag) => (
               <li key={tag}>
-                <Link
-                  href={`/?tag=${encodeURIComponent(tag)}`}
-                  style={{
-                    display: "inline-block",
-                    padding: "0.1rem 0.5rem",
-                    borderWidth: "1px",
-                    borderStyle: "solid",
-                    borderColor: "#bbb",
-                    borderRadius: "999px",
-                    fontSize: "0.75rem",
-                    color: "#666",
-                    textDecoration: "none",
-                  }}
-                >
-                  {tag}
-                </Link>
+                <TagPill tag={tag} size="sm" />
               </li>
             ))}
           </ul>

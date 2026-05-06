@@ -3,6 +3,7 @@ import type { CommentView } from "../../../src/features/comments/view";
 import type { ArticleView } from "../../../src/features/articles/view";
 import { FavoriteButton } from "../../components/FavoriteButton";
 import { FlashMessages } from "../../components/FlashMessages";
+import { TagPill } from "../../components/TagPill";
 import { useAuth } from "../../lib/use-auth";
 
 type Props = {
@@ -53,22 +54,7 @@ export default function Show({ article, isAuthor, comments }: Props) {
           >
             {article.tagList.map((tag) => (
               <li key={tag}>
-                <Link
-                  href={`/?tag=${encodeURIComponent(tag)}`}
-                  style={{
-                    display: "inline-block",
-                    padding: "0.15rem 0.6rem",
-                    borderWidth: "1px",
-                    borderStyle: "solid",
-                    borderColor: "#bbb",
-                    borderRadius: "999px",
-                    fontSize: "0.85rem",
-                    color: "#666",
-                    textDecoration: "none",
-                  }}
-                >
-                  {tag}
-                </Link>
+                <TagPill tag={tag} size="md" />
               </li>
             ))}
           </ul>
