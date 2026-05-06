@@ -30,7 +30,7 @@ export function Pagination({ total, limit, offset, buildHref }: Props) {
             href={buildHref(newOffset)}
             preserveScroll
             only={[...PARTIAL_KEYS]}
-            className={`${BASE} ${isCurrent ? "font-bold bg-[#eee]" : "font-normal bg-transparent"}`}
+            className={`${BASE} ${isCurrent ? "font-bold bg-gray-200" : "font-normal bg-transparent"}`}
           >
             {page}
           </Link>

@@ -1,8 +1,8 @@
 import { Link } from "@inertiajs/react";
 
 const SIZE_CLASSES = {
-  sm: "px-2 py-[0.1rem] text-xs",
-  md: "px-[0.6rem] py-0.5 text-sm",
+  sm: "px-2 py-0.5 text-xs",
+  md: "px-2.5 py-0.5 text-sm",
 } as const;
 
 type Props = {
@@ -14,7 +14,7 @@ export function TagPill({ tag, size }: Props) {
   return (
     <Link
       href={`/?tag=${encodeURIComponent(tag)}`}
-      className={`inline-block rounded-full border border-[#bbb] text-gray-600 no-underline ${SIZE_CLASSES[size]}`}
+      className={`inline-block rounded-full border border-gray-400 text-gray-600 no-underline ${SIZE_CLASSES[size]}`}
     >
       {tag}
     </Link>
