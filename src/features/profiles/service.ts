@@ -1,7 +1,10 @@
 import type { Db } from "../../db/client";
+import { listArticles } from "../articles/service";
+import type { ProfileArticlesQuery } from "../articles/validators";
 import { followRepo } from "../follows/repository";
 import { resolveIsFollowing } from "../follows/service";
 import { userRepo } from "../users/repository";
+import { toProfileView } from "./view";
 
 // プロフィール取得の orchestration。
 // 戻り値は tagged union: { kind: "ok", user, isFollowing } | { kind: "not_found" }
@@ -58,4 +61,45 @@ export async function unfollowUser(
 
   await follows.delete(followerId, target.id);
   return { kind: "ok" as const, user: target };
+}
+
+// Profile page の page-props builder。
+// tab→filter 解決 + getProfile + listArticles を Promise.all で並行取得し、ProfileView 変換まで集約。
+// 戻り値は tagged union: { kind: "ok", profile, articles, articlesCount } | { kind: "not_found" }
+export async function loadProfilePage(
+  db: Db,
+  viewerId: number | undefined,
+  username: string,
+  query: ProfileArticlesQuery,
+) {
+  // tab=my: 本人が author の記事 / tab=favorited: 本人が favorite した記事
+  const articleFilter =
+    query.tab === "favorited"
+      ? { favorited: username }
+      : { author: username };
+
+  const [profileResult, articleResult] = await Promise.all([
+    getProfile(db, viewerId, username),
+    listArticles(
+      db,
+      { limit: query.limit, offset: query.offset, ...articleFilter },
+      viewerId,
+    ),
+  ]);
+
+  if (profileResult.kind === "not_found") {
+    return { kind: "not_found" as const };
+  }
+
+  const isSelf = viewerId === profileResult.user.id;
+  return {
+    kind: "ok" as const,
+    profile: toProfileView(
+      profileResult.user,
+      profileResult.isFollowing,
+      isSelf,
+    ),
+    articles: articleResult.articles,
+    articlesCount: articleResult.articlesCount,
+  };
 }

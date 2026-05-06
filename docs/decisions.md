@@ -250,6 +250,25 @@ comment 投稿/削除で取り直したいのは comments props と flash (serve
 #### `NotFoundHandler` 型は `as unknown as` で cast
 hono の `NotFoundResponse` 型は `TypedResponse<string, 404, "text">` 固定 (text/404 を期待)、`@hono/inertia` の `c.render` は `TypedResponse<{...}, 200, "html">` を返すので構造が合わない。実態としては「404 status + html body」を返す妥当な response だが、型上は完全に別物なので `as unknown as NotFoundHandler<Env>` で handler ごと cast する。`as Response` だけだと `_data / _status / _format` が無いと弾かれる。**adapter (@hono/inertia) 側で notFound 用の typed render API を提供すべき** (Phase 3 PR 候補)。
 
+### Page-props builder を service 層に切り出す (D1)
+
+#### `loadHomePage` / `loadProfilePage` を service に追加
+これまで Home (`server.ts`) と Profile Show (`features/profiles/index.ts`) の route 内に **orchestration が混入** していた (login 判定 / tab 分岐 / Promise.all で複数 service 呼び出し / view 変換)。規約 = 「route → service → repository、route 層は HTTP/Inertia 専門」に対し、route が orchestration を兼ねる **3 層が 2.5 層に潰れた状態**。
+
+`features/articles/service.ts::loadHomePage(db, query, viewerId)` と `features/profiles/service.ts::loadProfilePage(db, viewerId, username, query)` を追加して page-props を 1 関数で組み立てるようにした。route は「validate → service 呼び出し → render」の 3 行構成に戻り、配線専念に。
+
+#### 戻り値は tagged union (既存 service と同形)
+`loadHomePage` は `{ kind: "ok", articles, articlesCount, popularTags } | { kind: "requires_auth" }` (Your Feed の subject = viewer 必須を kind で表現)、`loadProfilePage` は `{ kind: "ok", profile, articles, articlesCount } | { kind: "not_found" }` (target user が居ないケース)。route は kind narrow して `c.redirect` / `c.notFound` / `c.render` に分岐する。`createArticle` / `updateArticle` 等と同じ pattern なのでコードベース全体で一貫。
+
+#### route での render は field-by-field の explicit 渡し
+service 戻り値を `...result` で spread すると `kind` も Home/Profile props に流れ込む。既存 (profiles の元コード) も `articles: articleResult.articles, articlesCount: articleResult.articlesCount` の形で書いてたので踏襲。Home.tsx / Profiles/Show.tsx の props 型と render call site が直接対応するので grep でたどりやすい。
+
+#### Promise.all で popularTags を並行化
+副作用として **Home 1 リクエストの DB round-trip が 1 つ減った**: 元は `await listArticles(...) → await listAllTags(...)` の sequential、新は `Promise.all([listArticles(...), listAllTags(...)])` 並行。orchestration を service に集約したことで Promise.all 化が自然に書ける形になった (route 内 inline では login 判定の早期 return と Promise.all が同居しづらい)。
+
+#### feature 跨ぎの import: profiles → articles
+`features/profiles/service.ts` が `listArticles` (articles) と `ProfileArticlesQuery` (articles/validators) を import する形になった。Profile が Article 一覧を抱える時点で「Profile = user hub」の Conduit 仕様を採用してるので、依存方向 `profiles → articles` は意味的に妥当 (逆向きの `articles → profiles` は無い、現実の業務的にも記事は profile を知らなくていい)。**features 間の orchestration を service 層で書くなら、依存方向は意識的に singular に保つ必要がある** が、現状は profile が article を抱えるだけで一方向、問題なし。
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR

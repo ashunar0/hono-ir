@@ -50,11 +50,11 @@ src/
       validators.ts    # createArticleSchema / updateArticleSchema / articlesQuerySchema (Home の List/Feed 共通、tab=global|feed) / profileArticlesQuerySchema (Profile の pagination のみ、pick で derive)
       slug.ts          # generateSlug (slugify + Date.now base36 suffix)
       repository.ts    # articleRepo (factory): findBySlug / list / count / create / update / delete
-      service.ts       # createArticle / getArticleBySlug / updateArticle / deleteArticle / listArticles / feedArticles + presentArticleList (author を bulk 解決して N+1 回避)
+      service.ts       # createArticle / getArticleBySlug / updateArticle / deleteArticle / listArticles / feedArticles / loadHomePage (Home page-props builder: tab 分岐 + popularTags) + presentArticleList (author を bulk 解決して N+1 回避)
       view.ts          # ArticleView (body 含む) + ArticleListView (body 抜き) と toArticleView / toArticleListView
     profiles/          # プロフィール feature
       index.ts         # Hono sub-app (basePath で /profiles/:username 配下にまとめる)
-      service.ts       # getProfile / followUser / unfollowUser (follows feature を利用)
+      service.ts       # getProfile / followUser / unfollowUser (follows feature を利用) / loadProfilePage (Profile page-props builder: tab→filter + Promise.all で profile + articles)
       view.ts          # ProfileView 型 + toProfileView (isFollowing / isSelf flag)
     follows/           # フォロー関係 feature (users 間の関係モデル)
       repository.ts    # followRepo (exists / create / delete / findFollowingIds (Feed 用))

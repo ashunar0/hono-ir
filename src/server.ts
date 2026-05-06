@@ -3,7 +3,7 @@ import { type Context, Hono } from "hono";
 import type { NotFoundHandler } from "hono/types";
 import { createDb } from "./db/client";
 import articles from "./features/articles";
-import { feedArticles, listArticles } from "./features/articles/service";
+import { loadHomePage } from "./features/articles/service";
 import { articlesQuerySchema } from "./features/articles/validators";
 import auth from "./features/auth";
 import { resolveAuthUser } from "./features/auth/service";
@@ -11,7 +11,6 @@ import comments from "./features/comments";
 import favorites from "./features/favorites";
 import profiles from "./features/profiles";
 import tags from "./features/tags";
-import { listAllTags } from "./features/tags/service";
 import users from "./features/users";
 import { consumeFlash } from "./lib/flash";
 import { inertiaHelpers } from "./lib/inertia-helpers";
@@ -56,24 +55,22 @@ app.notFound(((c: Context<Env>) => {
 }) as unknown as NotFoundHandler<Env>);
 
 const routes = app
-  // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、tag filter / pagination は query で受ける
+  // Home: List (Global Feed) / Feed (Your Feed) を tab で切替、tag filter / pagination は query で受ける。
+  // orchestration (一覧取得 + popularTags + login 判定) は loadHomePage に集約
   .get("/", validateQuery(articlesQuerySchema), async (c) => {
     const query = c.req.valid("query");
-    const db = createDb(c.env.DB);
-    const userId = c.var.userId;
-
-    let result: Awaited<ReturnType<typeof listArticles>>;
-    if (query.tab === "feed") {
-      // 未 login で Feed 要求 → login へ
-      if (userId === undefined) return c.redirect("/login", 303);
-      // Feed タブは tag filter を持たない (Your Feed の意味が変わるので無視)
-      result = await feedArticles(db, userId, query);
-    } else {
-      result = await listArticles(db, query, userId);
-    }
-
-    const popularTags = await listAllTags(db);
-    return c.render("Home", { query, ...result, popularTags });
+    const result = await loadHomePage(
+      createDb(c.env.DB),
+      query,
+      c.var.userId,
+    );
+    if (result.kind === "requires_auth") return c.redirect("/login", 303);
+    return c.render("Home", {
+      query,
+      articles: result.articles,
+      articlesCount: result.articlesCount,
+      popularTags: result.popularTags,
+    });
   })
   .route("/", auth)
   .route("/", users)

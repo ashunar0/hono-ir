@@ -10,6 +10,7 @@ import { followRepo } from "../follows/repository";
 import {
   findArticleIdsByTagName,
   getTagsByArticleId,
+  listAllTags,
   listTagsByArticleIds,
   setArticleTags,
 } from "../tags/service";
@@ -213,4 +214,29 @@ export async function feedArticles(
     articles: await presentArticleList(db, rows, viewerId),
     articlesCount: total,
   };
+}
+
+// Home page の page-props builder。
+// tab=feed の login 判定 + 一覧取得 + popularTags を 1 関数に集約し、route は配線専念に戻す。
+// 戻り値は tagged union: { kind: "ok", articles, articlesCount, popularTags } | { kind: "requires_auth" }
+export async function loadHomePage(
+  db: Db,
+  query: ArticlesQuery,
+  viewerId: number | undefined,
+) {
+  if (query.tab === "feed") {
+    // Your Feed は subject (= viewer 自身) が必須
+    if (viewerId === undefined) return { kind: "requires_auth" as const };
+    const [feed, popularTags] = await Promise.all([
+      feedArticles(db, viewerId, query),
+      listAllTags(db),
+    ]);
+    return { kind: "ok" as const, ...feed, popularTags };
+  }
+
+  const [list, popularTags] = await Promise.all([
+    listArticles(db, query, viewerId),
+    listAllTags(db),
+  ]);
+  return { kind: "ok" as const, ...list, popularTags };
 }

@@ -2,10 +2,8 @@ import { Hono } from "hono";
 import { createDb } from "../../db/client";
 import { requireAuth } from "../../middleware/auth";
 import { validateQuery } from "../../middleware/validator";
-import { listArticles } from "../articles/service";
 import { profileArticlesQuerySchema } from "../articles/validators";
-import { followUser, getProfile, unfollowUser } from "./service";
-import { toProfileView } from "./view";
+import { followUser, loadProfilePage, unfollowUser } from "./service";
 
 type Env = {
   Bindings: CloudflareBindings;
@@ -15,39 +13,23 @@ type Env = {
 
 const app = new Hono<Env>()
   .basePath("/profiles/:username")
-  // プロフィール表示 + その user の記事一覧 (Conduit / Zenn 流に Profile = user hub)
+  // プロフィール表示 + その user の記事一覧 (Conduit / Zenn 流に Profile = user hub)。
+  // orchestration (profile + articles 並行取得 + tab→filter 解決) は loadProfilePage に集約
   .get("/", validateQuery(profileArticlesQuerySchema), async (c) => {
     const username = c.req.param("username");
     const query = c.req.valid("query");
-    const db = createDb(c.env.DB);
-    const userId = c.var.userId;
-
-    // tab=my: 本人が author の記事 / tab=favorited: 本人が favorite した記事
-    const articleFilter =
-      query.tab === "favorited"
-        ? { favorited: username }
-        : { author: username };
-    const [profileResult, articleResult] = await Promise.all([
-      getProfile(db, userId, username),
-      listArticles(
-        db,
-        { limit: query.limit, offset: query.offset, ...articleFilter },
-        userId,
-      ),
-    ]);
-
-    if (profileResult.kind === "not_found") return c.notFound();
-
-    const isSelf = userId === profileResult.user.id;
-    return c.render("Profiles/Show", {
-      profile: toProfileView(
-        profileResult.user,
-        profileResult.isFollowing,
-        isSelf,
-      ),
+    const result = await loadProfilePage(
+      createDb(c.env.DB),
+      c.var.userId,
+      username,
       query,
-      articles: articleResult.articles,
-      articlesCount: articleResult.articlesCount,
+    );
+    if (result.kind === "not_found") return c.notFound();
+    return c.render("Profiles/Show", {
+      profile: result.profile,
+      query,
+      articles: result.articles,
+      articlesCount: result.articlesCount,
     });
   })
   // フォロー (将来 Article Show 等の他 page から呼ばれても referer に戻れるよう c.back)
