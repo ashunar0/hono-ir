@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
-import { setFlash } from "../../lib/flash";
 import {
   clearSessionCookie,
   getSessionCookie,
@@ -32,8 +31,7 @@ const app = new Hono<Env>()
     }
 
     setSessionCookie(c, result.session);
-    setFlash(c, { success: "アカウントを作成しました" });
-    return c.redirect("/", 303);
+    return c.forward("/", { flash: { success: "アカウントを作成しました" } });
   })
   // ログインフォーム表示
   .get("/login", (c) => c.render("Users/Login", {}))
@@ -47,8 +45,7 @@ const app = new Hono<Env>()
     }
 
     setSessionCookie(c, result.session);
-    setFlash(c, { success: "ログインしました" });
-    return c.redirect("/", 303);
+    return c.forward("/", { flash: { success: "ログインしました" } });
   })
   // ログアウト
   .post("/logout", requireAuth, async (c) => {
@@ -59,8 +56,7 @@ const app = new Hono<Env>()
     }
 
     clearSessionCookie(c);
-    setFlash(c, { success: "ログアウトしました" });
-    return c.redirect("/login", 303);
+    return c.forward("/login", { flash: { success: "ログアウトしました" } });
   });
 
 export default app;

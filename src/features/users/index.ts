@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
-import { setFlash } from "../../lib/flash";
 import { type AuthVariables, requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { updateUser } from "./service";
@@ -33,8 +32,9 @@ const app = new Hono<Env>()
       return c.back({ errors: { username: "username is already taken" } });
     }
 
-    setFlash(c, { success: "プロフィールを更新しました" });
-    return c.redirect("/settings", 303);
+    return c.forward("/settings", {
+      flash: { success: "プロフィールを更新しました" },
+    });
   });
 
 export default app;

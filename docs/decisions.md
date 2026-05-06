@@ -280,6 +280,40 @@ PUT / DELETE は既に `c.back({ flash, fallback })` 化済みだったので、
 #### 余談: tagged union → HTTP 表現の mapping は route の責務
 3 routes で似たような `if (result.kind === "not_found") return c.notFound(); if (result.kind === "forbidden") return c.back(...)` の pattern が現れて「重複」に見えるが、これを service 層に上げると `c.notFound()` / `c.back()` が service に染み出して **HTTP の知識が漏れる = 層が崩れる**。route 層の本質的な責務は「ドメインの結果 (tagged union) を HTTP 表現 (status / redirect / render) に変える」こと、まさに今やってる。重複を DRY 化したくなったら Rails の `respond_with` 的 mapper helper を導入する別軸の議論で、3 箇所では YAGNI の範囲。
 
+### c.forward を新設して c.back との対称 API に (D2 続き)
+
+#### 経緯: c.back の進化を捕まえてからの「対称性」
+c.back は 3 段階で進化してきた:
+1. **第 1 段階 (Phase 2.5)**: validation error → 同じページに戻して `errors` 表示。**form workflow の error handling 専用**として作った
+2. **第 2 段階 (Favorite/Follow)**: ♡ ボタン成功後にどのページから来てもいい感じに戻したい → 「**referer に戻す**」プリミティブだと再認識
+3. **第 3 段階 (D2)**: referer 不在を `fallback` で受ける活用に気付く (実は最初から fallback はあった、当時の見落とし)
+
+つまり今の c.back は **「referer or fallback への 303 redirect + 任意の flash」** というプリミティブ。これに対し残りの `setFlash + c.redirect(url, 303)` は **「明示 URL への 303 redirect + flash」** という対称的な慣用句のまま 2 行で書かれていた。
+
+#### `c.forward(url, { flash, errors })` を追加
+inertia-helpers.ts に c.forward を新設し、setFlash 直接呼び出しを 1 行化:
+```ts
+// 旧 (2 行):
+setFlash(c, { success: "記事を作成しました" });
+return c.redirect(`/articles/${slug}`, 303);
+
+// 新 (1 行):
+return c.forward(`/articles/${slug}`, { flash: { success: "記事を作成しました" } });
+```
+内部実装は `setFlash + c.redirect(url, 303)` の薄い wrapper。flash payload 処理は c.back と共通の `applyFlashPayload` に切り出して DRY 化。
+
+#### 動的 vs 静的 — 形は近いが意味論は違う
+- **`c.back({ flash, fallback })`**: 戻り先は referer から **動的** に導出 (失敗時 / Like 等の文脈に依らない遷移用)、fallback は referer 不在の保険
+- **`c.forward(url, { flash })`**: 戻り先は呼び元が **静的** に指定 (作成成功 → Show、ログイン → / 等の意図的な遷移用)
+
+統一 API (`c.go({ to: "back" | url, flash, fallback? })` 案) も検討したが、`to` が `"back" | string` の union で型が汚いし、call site で意図が一目で分かりにくい。**別関数で意図を分ける方が読み手に親切** という判断。Rails の `redirect_to` / `redirect_back_or_to` も別 API で揃えてる。
+
+#### 効果: `setFlash` の direct 利用が library 内部 1 箇所のみに
+features 側 (auth / articles / users) の 7 箇所すべてが c.forward (success 通知付き redirect) または c.back (error 系) に置き換わり、`setFlash` の直接呼び出しは inertia-helpers.ts 内部 (= c.back / c.forward の中身) だけに集約。これは `setFlash` を将来 private 化する余地を作る。
+
+#### Phase 3 PR の素材として
+adapter (`@hono/inertia`) に提案する API は **c.back / c.forward の対称ペア** + sharedData。Inertia 流 server-driven flow の「flash + redirect」慣用句を 1 行化する value があり、Rails / Phoenix / Laravel の前例とも整合する。React 19 普及期の今、Phase 3 PR の説得力素材が 1 つ充実した。
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR
@@ -291,8 +325,9 @@ PUT / DELETE は既に `c.back({ flash, fallback })` 化済みだったので、
 - **`src/lib/inertia-share.ts` (sharedData middleware)** → `honojs/middleware` (`@hono/inertia`)
   - 詳細は `docs/inertia-share-design.md` 参照
   - shared data 機構 + errors 自動配信、Laravel-Inertia の同等機能の Hono 移植
-- **`src/lib/inertia-helpers.ts` (`c.back` middleware)** → `honojs/middleware` (`@hono/inertia`)
-  - redirect-back + flash + errors の 1 行 helper
+- **`src/lib/inertia-helpers.ts` (`c.back` / `c.forward` middleware)** → `honojs/middleware` (`@hono/inertia`)
+  - redirect-back + flash + errors の 1 行 helper、および明示 URL に進む対称 API (`c.forward`)
+  - 「flash + redirect」慣用句の 1 行化、Rails / Phoenix / Laravel と整合
 
 PR 受け入れ難易度: `@hono/inertia` < `inertiajs/inertia` (community adapter は メンテナ少人数で意思決定速い、本体は要 discussion 経由)。**順序**: 先に `@hono/inertia` 側 2 PR で実績作る → 後で本体に Promise router 提案。タイミング的には React 19 普及期の今が「`useOptimistic` 連携必須論」が立ちやすくて◎。
 

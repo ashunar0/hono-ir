@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
-import { setFlash } from "../../lib/flash";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { listComments } from "../comments/service";
@@ -34,8 +33,9 @@ const app = new Hono<Env>()
         c.req.valid("json"),
       );
 
-      setFlash(c, { success: "記事を作成しました" });
-      return c.redirect(`/articles/${result.article.slug}`, 303);
+      return c.forward(`/articles/${result.article.slug}`, {
+        flash: { success: "記事を作成しました" },
+      });
     },
   )
   // 記事編集フォーム表示
@@ -79,8 +79,9 @@ const app = new Hono<Env>()
         });
       }
 
-      setFlash(c, { success: "記事を更新しました" });
-      return c.redirect(`/articles/${slug}`, 303);
+      return c.forward(`/articles/${slug}`, {
+        flash: { success: "記事を更新しました" },
+      });
     },
   )
   // 記事削除
@@ -100,8 +101,7 @@ const app = new Hono<Env>()
       });
     }
 
-    setFlash(c, { success: "記事を削除しました" });
-    return c.redirect("/", 303);
+    return c.forward("/", { flash: { success: "記事を削除しました" } });
   })
   // 記事表示 (article + comments を並行 load)
   .get("/articles/:slug", async (c) => {
