@@ -49,10 +49,10 @@ const app = new Hono<Env>()
 
     if (result.kind === "not_found") return c.notFound();
     if (result.authorId !== c.var.userId) {
-      // Edit page は Show 以外から踏まれる可能性 (URL 直叩き / Home リンク) があるので
-      // Referer に戻すのではなく Show に固定で飛ばす
-      setFlash(c, { error: "編集権限がありません" });
-      return c.redirect(`/articles/${slug}`, 303);
+      return c.back({
+        flash: { error: "編集権限がありません" },
+        fallback: `/articles/${slug}`,
+      });
     }
 
     return c.render("Articles/Edit", { article: result.article });

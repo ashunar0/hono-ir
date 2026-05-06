@@ -269,6 +269,17 @@ service 戻り値を `...result` で spread すると `kind` も Home/Profile pr
 #### feature 跨ぎの import: profiles → articles
 `features/profiles/service.ts` が `listArticles` (articles) と `ProfileArticlesQuery` (articles/validators) を import する形になった。Profile が Article 一覧を抱える時点で「Profile = user hub」の Conduit 仕様を採用してるので、依存方向 `profiles → articles` は意味的に妥当 (逆向きの `articles → profiles` は無い、現実の業務的にも記事は profile を知らなくていい)。**features 間の orchestration を service 層で書くなら、依存方向は意識的に singular に保つ必要がある** が、現状は profile が article を抱えるだけで一方向、問題なし。
 
+### Edit GET の forbidden を c.back に統一 (D2)
+
+#### 旧: `setFlash + c.redirect`、新: `c.back({ flash, fallback })`
+articles の Edit GET (`/articles/:slug/edit`) で他人の記事を踏んだとき、これまで `setFlash + c.redirect` で固定 Show に飛ばしていた。当時のコメントは「Edit page は Show 以外から踏まれる可能性があるので Referer に戻すのではなく Show に固定で飛ばす」だが、これは `c.back` に `fallback` 引数が無いと思って書いたコード。実際には `fallback` を指定すれば referer 無し → fallback Show に飛ぶので、PUT / DELETE と同じ pattern で書ける。
+
+#### 結果: 3 routes (Edit GET / PUT / DELETE) で forbidden 対応が完全統一
+PUT / DELETE は既に `c.back({ flash, fallback })` 化済みだったので、Edit GET も合流させて、forbidden 系は **すべて** `c.back({ flash: { error: ... }, fallback: ... })` の 1 行 pattern。挙動も妥当：URL 直叩き → fallback Show (= 旧と同じ)、Show ページの Edit ボタンから来た → Show 自身に戻る (= fallback と同じ)、Home / 他サイトから来た → referer に戻る (= 文脈に応じた自然な戻り先、旧の固定 Show より UX 良い)。
+
+#### 余談: tagged union → HTTP 表現の mapping は route の責務
+3 routes で似たような `if (result.kind === "not_found") return c.notFound(); if (result.kind === "forbidden") return c.back(...)` の pattern が現れて「重複」に見えるが、これを service 層に上げると `c.notFound()` / `c.back()` が service に染み出して **HTTP の知識が漏れる = 層が崩れる**。route 層の本質的な責務は「ドメインの結果 (tagged union) を HTTP 表現 (status / redirect / render) に変える」こと、まさに今やってる。重複を DRY 化したくなったら Rails の `respond_with` 的 mapper helper を導入する別軸の議論で、3 箇所では YAGNI の範囲。
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR

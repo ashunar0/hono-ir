@@ -2,7 +2,7 @@
 
 hono-ir の進捗 + これからやること + セッション間引き継ぎ。CLAUDE.md からは pointer のみ。
 
-## 実装状況 (2026-05-06 時点、Tags + Optimistic UI → RealWorld spec 機能完成 + 楽観的更新 + UI 整え + Comment optimistic + 404 Inertia 化 + page-props builder)
+## 実装状況 (2026-05-06 時点、Tags + Optimistic UI → RealWorld spec 機能完成 + 楽観的更新 + UI 整え + Comment optimistic + 404 Inertia 化 + page-props builder + c.back 統一)
 
 ### 完了
 
@@ -39,10 +39,11 @@ hono-ir の進捗 + これからやること + セッション間引き継ぎ。
 - [x] **Comment add/delete を useOptimistic 化 (H4)**: Favorite で導入した pattern を Comment にも適用。Show.tsx 内 inline の CommentForm + CommentList を **CommentsSection 1 つに統合** して useOptimistic state を共有。Favorite が「1 state + 1 reducer (toggle のみ)」なのに対し Comment は「1 state + 1 reducer + union action `{type: "add"|"remove"}`」(同じ data を触る複数 action を 1 個に集約)。temp comment の id は **`-Date.now()` の negative number** (`id: number` 型維持、pending 判定は `id < 0` 1 行、AUTOINCREMENT と衝突しない)。pending 中は **opacity-50 で薄く + Delete ボタン非表示** (`comment.id < 0` で gate、server 採番前の id を delete に渡せないので 404 防止)。submit は `startTransition` 内で `dispatchOptimistic + form.reset + visit.post` を await。partial reload key は `["comments", "flash"]`
 - [x] **404 page を Inertia 流に (C)**: `app/pages/Errors/NotFound.tsx` 新設 + `app.notFound((c) => { c.status(404); return c.render("Errors/NotFound", {}); })` で配線。sub-app の `c.notFound()` 13 箇所はトップレベル handler を踏むので個別修正不要、AppLayout も自動で乗る。`c.render` は内部で 200 を返すので `c.status(404)` で上書き、Inertia partial response (X-Inertia: true) でも 404 + JSON body が正しく返る。型は `as unknown as NotFoundHandler<Env>` で cast (hono の `NotFoundResponse` は text/404 固定で Inertia render と構造不一致、Phase 3 PR の adapter 改善候補)
 - [x] **Page-props builder を service 層に切り出す (D1)**: 規約 (route → service → repo、route は HTTP/Inertia 専門) に対し、Home (`server.ts`) と Profile Show (`features/profiles/index.ts`) の route が orchestration (login 判定 / tab 分岐 / Promise.all / view 変換) を兼ねてた 3 層 → 2.5 層状態を解消。`features/articles/service.ts::loadHomePage(db, query, viewerId)` と `features/profiles/service.ts::loadProfilePage(db, viewerId, username, query)` を追加、戻り値は tagged union (`{ kind: "ok", ... } | { kind: "requires_auth" }` / `{ kind: "ok", ... } | { kind: "not_found" }`) で既存 service と同形。route は「validate → service → render」の 3 行構成に戻り配線専念。副作用として popularTags が `Promise.all` で並行化、Home の DB round-trip が 1 つ減る。依存方向は `profiles → articles` の一方向 (Profile = user hub の Conduit 仕様、逆向きは無し)
+- [x] **Edit GET の forbidden を c.back 統一 (D2)**: articles の Edit GET (`/articles/:slug/edit`) で他人の記事を踏んだ場合、これまで `setFlash + c.redirect(Show 固定)` だったのを `c.back({ flash: { error }, fallback: Show })` に変更。当時のコメント「Show 以外から踏まれる可能性があるので Referer に戻さず Show に固定」は `c.back` の `fallback` 引数を知らずに書いたコードで、実際は fallback で同じ意図 (referer 無しなら Show) を満たせる。結果 PUT / DELETE と Edit GET が完全同形 (`c.back({ flash, fallback })`)。tagged union → HTTP 表現の mapping は route の責務として正しい (service に上げると HTTP 知識が漏れて層が崩れる) ので、重複の DRY 化は YAGNI 判断で見送り
 
 ### リファクタ候補
 
-- **forbidden / not_found の inline 重複**: Update / Delete / Edit form の 3 箇所で `setFlash(c, { error }) + c.redirect(...)` が重複。3 箇所では困っていないが、List / Feed 等で更に増えたら `c.back({ flash: { error } })` への置き換え検討
+(現状なし)
 - **arbitrary value を Tailwind preset に寄せる**: 今は `text-[#666]` `border-[#bbb]` 等で「inline style → class の純粋翻訳」になっているが、`text-gray-700` 等の preset に寄せれば dark mode 対応 / 一貫性 / 検索性が上がる。「デザインそのまま」を一旦ほどく判断 (色彩設計の見直し) を伴うので別タスク
 
 ## 次回への引き継ぎ
@@ -137,9 +138,20 @@ C の続き、ロードマップのリファクタ候補からもう 1 つ消化
 
 判断記録の追加分は `docs/decisions.md` の 2026-05-06 セクション末尾「Page-props builder を service 層に切り出す (D1)」参照。
 
+#### 2026-05-06 (続続続続続続: Edit GET の forbidden を c.back 統一 — D2)
+
+D1 の続き、ロードマップのリファクタ候補から最後の 1 つ消化。
+
+- **発端**: 「Update / Delete / Edit form の 3 箇所で setFlash + c.redirect 重複」と roadmap に書かれていたが、実際は PUT / DELETE は既に c.back 化済みで、Edit GET だけが setFlash + c.redirect で残ってた
+- **修正**: Edit GET も `c.back({ flash: { error }, fallback: Show })` に変更。当時のコメント「Show 以外から踏まれる可能性があるので Referer に戻さず Show に固定」は `c.back` の `fallback` 引数を知らずに書いたコード、fallback で同じ意図を満たせる
+- **結果**: 3 routes (Edit GET / PUT / DELETE) で forbidden 対応が完全同形 (`c.back({ flash, fallback })`)
+- **議論メモ**: 「3 routes で `kind` narrow → `c.notFound()` / `c.back()` の mapping pattern が重複してる、これ route 層の責務じゃないんじゃ?」というユーザー側の問いがあったが、結論は **route の責務で正しい**。route 層の本質は「ドメインの結果 (tagged union 含む) を HTTP 表現 (status / redirect / render) に変換する」こと。これを service に上げると `c.notFound` / `c.back` が service に染み出して HTTP 知識が漏れる = 層が崩れる。重複が多くなったら Rails の `respond_with` 的 mapper helper を導入する別軸の議論で、3 箇所では YAGNI
+
+判断記録の追加分は `docs/decisions.md` の 2026-05-06 セクション末尾「Edit GET の forbidden を c.back に統一 (D2)」参照。
+
 ### 次セッション最初の一手
 
-RealWorld spec 機能 + Favorite/Follow Optimistic + Comment Optimistic + 404 Inertia 化 + page-props builder 切り出し (D1) まで完成 ✓。残る選択肢:
+RealWorld spec 機能 + Favorite/Follow Optimistic + Comment Optimistic + 404 Inertia 化 + page-props builder 切り出し (D1) + c.back 統一 (D2) まで完成 ✓。残る選択肢:
 
 **H. フロント rendering 制御の続き** ← Optimistic UI の延長線
 - **H5. Inertia の `deferred` props を試す** — Show ページで comments を後流し (article 先 + comments 後、Astro Server Islands / RSC Streaming 的)。Popular Tags サイドバー (Home) も deferred 候補
@@ -157,7 +169,6 @@ RealWorld spec 機能 + Favorite/Follow Optimistic + Comment Optimistic + 404 In
 - React 19 普及期の今がタイミング◎
 
 **D. その他リファクタ / 仕上げ**
-- D2. forbidden / not_found の inline 重複: Update / Delete / Edit form の 3 箇所。`c.back({ flash: { error } })` への置き換え検討 (List / Feed で増えたら)
 - D3. arbitrary value の色 (`text-[#666]` `border-[#bbb]` 等) を preset (`text-gray-700` 等) に寄せる — 「デザインそのまま」を一旦ほどく判断 (色彩設計の見直し) を伴うので別タスク扱い
 
 **E. UI を mockup レベルに上げる** ← 今回の wireframe の続き
