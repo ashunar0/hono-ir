@@ -1,4 +1,4 @@
-import { Link, router, useForm } from "@inertiajs/react";
+import { Deferred, Link, router, useForm } from "@inertiajs/react";
 import { startTransition, useOptimistic } from "react";
 import type { CommentView } from "../../../src/features/comments/view";
 import type { ArticleView } from "../../../src/features/articles/view";
@@ -63,7 +63,12 @@ export default function Show({ article, isAuthor, comments }: Props) {
 
       <section className="mt-8">
         <h2>Comments</h2>
-        <CommentsSection slug={article.slug} comments={comments} />
+        <Deferred
+          data="comments"
+          fallback={<p className="text-gray-600">Loading comments...</p>}
+        >
+          <CommentsSection slug={article.slug} comments={comments} />
+        </Deferred>
       </section>
 
       <p className="mt-8">

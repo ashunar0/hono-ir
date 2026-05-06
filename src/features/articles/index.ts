@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { createDb } from "../../db/client";
+import { defer } from "../../lib/inertia-defer";
 import { requireAuth } from "../../middleware/auth";
 import { validateJson } from "../../middleware/validator";
 import { listComments } from "../comments/service";
+import type { CommentView } from "../comments/view";
 import {
   createArticle,
   deleteArticle,
@@ -103,27 +105,24 @@ const app = new Hono<Env>()
 
     return c.forward("/", { flash: { success: "記事を削除しました" } });
   })
-  // 記事表示 (article + comments を並行 load)
+  // 記事表示 (article は即時、comments は client mount 後に後追いで partial reload)
   .get("/articles/:slug", async (c) => {
     const db = createDb(c.env.DB);
     const slug = c.req.param("slug");
     const viewerId = c.var.userId;
 
-    const [articleResult, commentsResult] = await Promise.all([
-      getArticleBySlug(db, slug, viewerId),
-      listComments(db, slug),
-    ]);
-
+    const articleResult = await getArticleBySlug(db, slug, viewerId);
     if (articleResult.kind === "not_found") return c.notFound();
-    // listComments は同じ slug を引いているので article_not_found には来ない想定
-    const comments =
-      commentsResult.kind === "ok" ? commentsResult.comments : [];
 
     return c.render("Articles/Show", {
       article: articleResult.article,
       isAuthor:
         viewerId !== undefined && articleResult.authorId === viewerId,
-      comments,
+      comments: defer<CommentView[]>(async () => {
+        const result = await listComments(db, slug);
+        // article 存在は確認済みなので article_not_found には来ない想定 (型上の保険のみ)
+        return result.kind === "ok" ? result.comments : [];
+      }),
     });
   });
 

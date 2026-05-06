@@ -1,6 +1,7 @@
 import { type SQL, and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { articles as articlesTable } from "../../db/schema";
+import { defer } from "../../lib/inertia-defer";
 import { favoriteRepo } from "../favorites/repository";
 import {
   resolveFavoriteContext,
@@ -218,6 +219,8 @@ export async function feedArticles(
 
 // Home page の page-props builder。
 // tab=feed の login 判定 + 一覧取得 + popularTags を 1 関数に集約し、route は配線専念に戻す。
+// popularTags は initial render に不要なので defer して mount 後に後追いさせる
+// (sidebar が初動を遅らせない / 大量 tag でも記事一覧表示は妨げない)
 // 戻り値は tagged union: { kind: "ok", articles, articlesCount, popularTags } | { kind: "requires_auth" }
 export async function loadHomePage(
   db: Db,
@@ -227,16 +230,18 @@ export async function loadHomePage(
   if (query.tab === "feed") {
     // Your Feed は subject (= viewer 自身) が必須
     if (viewerId === undefined) return { kind: "requires_auth" as const };
-    const [feed, popularTags] = await Promise.all([
-      feedArticles(db, viewerId, query),
-      listAllTags(db),
-    ]);
-    return { kind: "ok" as const, ...feed, popularTags };
+    const feed = await feedArticles(db, viewerId, query);
+    return {
+      kind: "ok" as const,
+      ...feed,
+      popularTags: defer(() => listAllTags(db)),
+    };
   }
 
-  const [list, popularTags] = await Promise.all([
-    listArticles(db, query, viewerId),
-    listAllTags(db),
-  ]);
-  return { kind: "ok" as const, ...list, popularTags };
+  const list = await listArticles(db, query, viewerId);
+  return {
+    kind: "ok" as const,
+    ...list,
+    popularTags: defer(() => listAllTags(db)),
+  };
 }

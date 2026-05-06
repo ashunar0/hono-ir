@@ -13,6 +13,7 @@ import profiles from "./features/profiles";
 import tags from "./features/tags";
 import users from "./features/users";
 import { consumeFlash } from "./lib/flash";
+import { inertiaDeferred } from "./lib/inertia-defer";
 import { inertiaHelpers } from "./lib/inertia-helpers";
 import { sharedData } from "./lib/inertia-share";
 import { loadAuth, type OptionalAuthVariables } from "./middleware/auth";
@@ -46,6 +47,7 @@ app.use(inertia({ rootView }));
 app.use(inertiaHelpers());
 app.use(loadAuth);
 app.use(sharedData<Env>(share));
+app.use(inertiaDeferred());
 
 // sub-app の c.notFound() もここに合流する。c.render は内部で 200 を返すので status を上書き。
 // hono の NotFoundResponse 型は text/404 固定なので Inertia render を流すには handler ごと cast

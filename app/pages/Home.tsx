@@ -1,4 +1,4 @@
-import { Link } from "@inertiajs/react";
+import { Deferred, Link } from "@inertiajs/react";
 import type { ArticleListView } from "../../src/features/articles/view";
 import type { ArticlesQuery } from "../../src/features/articles/validators";
 import { ArticleCard } from "../components/ArticleCard";
@@ -101,31 +101,55 @@ export default function Home({
           />
         </div>
 
-        {popularTags.length > 0 && (
-          <aside className="w-64 p-3 bg-gray-100 rounded-sm">
-            <h3 className="mt-0 text-base">Popular Tags</h3>
-            <ul className="list-none p-0 m-0 flex flex-wrap gap-1">
-              {popularTags.map((tag) => (
-                <li key={tag}>
-                  <Link
-                    href={buildHomeHref({
-                      ...query,
-                      tab: "global",
-                      offset: 0,
-                      tag,
-                    })}
-                    only={[...PARTIAL_KEYS]}
-                    preserveScroll
-                    className={`inline-block px-[0.6rem] py-0.5 ${query.tag === tag ? "bg-[#333]" : "bg-[#888]"} text-white rounded-full text-[0.8rem] no-underline`}
-                  >
-                    {tag}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        )}
+        <Deferred
+          data="popularTags"
+          fallback={
+            <aside className="w-64 p-3 bg-gray-100 rounded-sm">
+              <h3 className="mt-0 text-base">Popular Tags</h3>
+              <p className="text-gray-600 text-sm m-0">Loading...</p>
+            </aside>
+          }
+        >
+          <PopularTagsAside tags={popularTags} query={query} />
+        </Deferred>
       </div>
     </>
+  );
+}
+
+// Deferred children として「prop が load 完了したら mount」される側。
+// Home 本体での inline access は fallback render 時に undefined 触って crash するので
+// 公式の PermissionsChildComponent pattern を踏襲して子 component に閉じ込める
+function PopularTagsAside({
+  tags,
+  query,
+}: {
+  tags: string[];
+  query: ArticlesQuery;
+}) {
+  if (tags.length === 0) return null;
+  return (
+    <aside className="w-64 p-3 bg-gray-100 rounded-sm">
+      <h3 className="mt-0 text-base">Popular Tags</h3>
+      <ul className="list-none p-0 m-0 flex flex-wrap gap-1">
+        {tags.map((tag) => (
+          <li key={tag}>
+            <Link
+              href={buildHomeHref({
+                ...query,
+                tab: "global",
+                offset: 0,
+                tag,
+              })}
+              only={[...PARTIAL_KEYS]}
+              preserveScroll
+              className={`inline-block px-2.5 py-0.5 ${query.tag === tag ? "bg-gray-800" : "bg-gray-500"} text-white rounded-full text-sm no-underline`}
+            >
+              {tag}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </aside>
   );
 }
