@@ -27,7 +27,7 @@ export default function Login() {
             />
           </label>
           {form.errors.email && (
-            <p style={{ color: "red" }}>{form.errors.email}</p>
+            <p className="text-[red]">{form.errors.email}</p>
           )}
         </div>
         <div>
@@ -40,7 +40,7 @@ export default function Login() {
             />
           </label>
           {form.errors.password && (
-            <p style={{ color: "red" }}>{form.errors.password}</p>
+            <p className="text-[red]">{form.errors.password}</p>
           )}
         </div>
         <button type="submit" disabled={form.processing}>

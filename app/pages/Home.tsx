@@ -15,6 +15,10 @@ type HomeProps = {
 
 const PARTIAL_KEYS = ["articles", "articlesCount", "query"] as const;
 
+const TAB_BASE = "px-3 py-1 no-underline text-inherit";
+const TAB_ACTIVE = `${TAB_BASE} font-bold border-b-2 border-[#333]`;
+const TAB_INACTIVE = `${TAB_BASE} font-normal`;
+
 // 現在の query を維持しつつ一部だけ差し替えた URL を組み立てる。
 // 呼び元は { ...query, ...overrides } で必要な field だけ上書きする
 function buildHomeHref(q: ArticlesQuery) {
@@ -34,11 +38,13 @@ export default function Home({
   popularTags,
 }: HomeProps) {
   const { user } = useAuth();
+  const isGlobalActive = query.tab === "global" && !query.tag;
+  const isFeedActive = query.tab === "feed";
 
   return (
     <main>
       <FlashMessages />
-      <nav style={{ marginBottom: "1rem" }}>
+      <nav className="mb-4">
         {user ? (
           <>
             <span>Logged in as {user.username}</span>
@@ -62,13 +68,7 @@ export default function Home({
       <h1>Hono × Inertia × React Tutorial</h1>
 
       {/* タブ。tag filter active 時は 3 つ目に Tag Feed を出す (Conduit 流派) */}
-      <nav
-        style={{
-          borderBottom: "1px solid #ccc",
-          marginBottom: "1rem",
-          paddingBottom: "0.25rem",
-        }}
-      >
+      <nav className="border-b border-[#ccc] mb-4 pb-1">
         <Link
           href={buildHomeHref({
             ...query,
@@ -78,15 +78,7 @@ export default function Home({
           })}
           only={[...PARTIAL_KEYS]}
           preserveScroll
-          style={{
-            padding: "0.25rem 0.75rem",
-            fontWeight:
-              query.tab === "global" && !query.tag ? "bold" : "normal",
-            borderBottom:
-              query.tab === "global" && !query.tag ? "2px solid #333" : "none",
-            textDecoration: "none",
-            color: "inherit",
-          }}
+          className={isGlobalActive ? TAB_ACTIVE : TAB_INACTIVE}
         >
           Global Feed
         </Link>
@@ -100,34 +92,22 @@ export default function Home({
             })}
             only={[...PARTIAL_KEYS]}
             preserveScroll
-            style={{
-              padding: "0.25rem 0.75rem",
-              fontWeight: query.tab === "feed" ? "bold" : "normal",
-              borderBottom: query.tab === "feed" ? "2px solid #333" : "none",
-              textDecoration: "none",
-              color: "inherit",
-            }}
+            className={isFeedActive ? TAB_ACTIVE : TAB_INACTIVE}
           >
             Your Feed
           </Link>
         )}
         {query.tag && (
-          <span
-            style={{
-              padding: "0.25rem 0.75rem",
-              fontWeight: "bold",
-              borderBottom: "2px solid #333",
-            }}
-          >
+          <span className="px-3 py-1 font-bold border-b-2 border-[#333]">
             # {query.tag}
           </span>
         )}
       </nav>
 
-      <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start" }}>
-        <div style={{ flex: 1 }}>
+      <div className="flex gap-8 items-start">
+        <div className="flex-1">
           {articles.length === 0 ? (
-            <p style={{ color: "#888" }}>No articles are here... yet.</p>
+            <p className="text-[#888]">No articles are here... yet.</p>
           ) : (
             articles.map((article) => (
               <ArticleCard key={article.slug} article={article} />
@@ -145,25 +125,9 @@ export default function Home({
         </div>
 
         {popularTags.length > 0 && (
-          <aside
-            style={{
-              width: "16rem",
-              padding: "0.75rem",
-              background: "#f5f5f5",
-              borderRadius: "0.25rem",
-            }}
-          >
-            <h3 style={{ marginTop: 0, fontSize: "1rem" }}>Popular Tags</h3>
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.3rem",
-              }}
-            >
+          <aside className="w-64 p-3 bg-[#f5f5f5] rounded-sm">
+            <h3 className="mt-0 text-base">Popular Tags</h3>
+            <ul className="list-none p-0 m-0 flex flex-wrap gap-[0.3rem]">
               {popularTags.map((tag) => (
                 <li key={tag}>
                   <Link
@@ -175,15 +139,7 @@ export default function Home({
                     })}
                     only={[...PARTIAL_KEYS]}
                     preserveScroll
-                    style={{
-                      display: "inline-block",
-                      padding: "0.15rem 0.6rem",
-                      background: query.tag === tag ? "#333" : "#888",
-                      color: "#fff",
-                      borderRadius: "999px",
-                      fontSize: "0.8rem",
-                      textDecoration: "none",
-                    }}
+                    className={`inline-block px-[0.6rem] py-[0.15rem] ${query.tag === tag ? "bg-[#333]" : "bg-[#888]"} text-white rounded-full text-[0.8rem] no-underline`}
                   >
                     {tag}
                   </Link>

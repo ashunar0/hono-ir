@@ -18,15 +18,8 @@ export default function Show({ article, isAuthor, comments }: Props) {
       <FlashMessages />
       <article>
         <h1>{article.title}</h1>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            color: "#666",
-          }}
-        >
-          <p style={{ margin: 0 }}>
+        <div className="flex justify-between items-center text-[#666]">
+          <p className="m-0">
             by {article.author.username} ·{" "}
             {new Date(article.createdAt).toLocaleDateString()}
           </p>
@@ -40,18 +33,9 @@ export default function Show({ article, isAuthor, comments }: Props) {
         <p>
           <em>{article.description}</em>
         </p>
-        <div style={{ whiteSpace: "pre-wrap" }}>{article.body}</div>
+        <div className="whitespace-pre-wrap">{article.body}</div>
         {article.tagList.length > 0 && (
-          <ul
-            style={{
-              listStyle: "none",
-              margin: "1rem 0 0 0",
-              padding: 0,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.4rem",
-            }}
-          >
+          <ul className="list-none mt-4 mb-0 mx-0 p-0 flex flex-wrap gap-[0.4rem]">
             {article.tagList.map((tag) => (
               <li key={tag}>
                 <TagPill tag={tag} size="md" />
@@ -60,7 +44,7 @@ export default function Show({ article, isAuthor, comments }: Props) {
           </ul>
         )}
         {isAuthor && (
-          <p style={{ marginTop: "1rem" }}>
+          <p className="mt-4">
             <Link href={`/articles/${article.slug}/edit`}>Edit</Link>
             {" | "}
             <button
@@ -77,13 +61,13 @@ export default function Show({ article, isAuthor, comments }: Props) {
         )}
       </article>
 
-      <section style={{ marginTop: "2rem" }}>
+      <section className="mt-8">
         <h2>Comments</h2>
         <CommentForm slug={article.slug} />
         <CommentList slug={article.slug} comments={comments} />
       </section>
 
-      <p style={{ marginTop: "2rem" }}>
+      <p className="mt-8">
         <Link href="/">← Home</Link>
       </p>
     </main>
@@ -110,7 +94,7 @@ function CommentForm({ slug }: { slug: string }) {
           onSuccess: () => form.reset("body"),
         });
       }}
-      style={{ marginBottom: "1.5rem" }}
+      className="mb-6"
     >
       <div>
         <textarea
@@ -118,9 +102,9 @@ function CommentForm({ slug }: { slug: string }) {
           onChange={(e) => form.setData("body", e.target.value)}
           rows={3}
           placeholder="Write a comment..."
-          style={{ width: "100%" }}
+          className="w-full"
         />
-        {form.errors.body && <p style={{ color: "red" }}>{form.errors.body}</p>}
+        {form.errors.body && <p className="text-[red]">{form.errors.body}</p>}
       </div>
       <button type="submit" disabled={form.processing}>
         Post Comment
@@ -139,24 +123,20 @@ function CommentList({
   const { user } = useAuth();
 
   if (comments.length === 0) {
-    return <p style={{ color: "#666" }}>No comments yet.</p>;
+    return <p className="text-[#666]">No comments yet.</p>;
   }
 
   return (
-    <ul style={{ listStyle: "none", padding: 0 }}>
+    <ul className="list-none p-0">
       {comments.map((comment) => {
         const isAuthor = comment.author.username === user?.username;
         return (
           <li
             key={comment.id}
-            style={{
-              border: "1px solid #ddd",
-              padding: "0.75rem",
-              marginBottom: "0.5rem",
-            }}
+            className="border border-[#ddd] p-3 mb-2"
           >
-            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{comment.body}</p>
-            <p style={{ color: "#666", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+            <p className="whitespace-pre-wrap m-0">{comment.body}</p>
+            <p className="text-[#666] text-[0.875rem] mt-2">
               by {comment.author.username} ·{" "}
               {new Date(comment.createdAt).toLocaleDateString()}
               {isAuthor && (

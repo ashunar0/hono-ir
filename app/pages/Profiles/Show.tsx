@@ -18,6 +18,10 @@ type Props = {
 
 const TAB_PARTIAL_KEYS = ["articles", "articlesCount", "query"];
 
+const TAB_BASE = "px-3 py-1 border-b-2 no-underline text-inherit";
+const TAB_ACTIVE = `${TAB_BASE} border-[#333] font-bold`;
+const TAB_INACTIVE = `${TAB_BASE} border-transparent font-normal`;
+
 // 現在の tab / offset / limit から URL を組み立てる。tab 切替時は offset を 0 にリセット
 function buildProfileHref(
   username: string,
@@ -72,7 +76,7 @@ export default function Show({
           <img
             src={profile.image}
             alt={profile.username}
-            style={{ width: 100, height: 100, borderRadius: "50%" }}
+            className="w-[100px] h-[100px] rounded-full"
           />
         )}
         <h1>@{profile.username}</h1>
@@ -99,8 +103,8 @@ export default function Show({
         )}
       </article>
 
-      <section style={{ marginTop: "2rem" }}>
-        <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
+      <section className="mt-8">
+        <nav className="mb-4 flex gap-4">
           {tabs.map((t) => {
             const isActive = t.key === query.tab;
             return (
@@ -113,15 +117,7 @@ export default function Show({
                 })}
                 preserveScroll
                 only={TAB_PARTIAL_KEYS}
-                style={{
-                  padding: "0.25rem 0.75rem",
-                  borderBottom: isActive
-                    ? "2px solid #333"
-                    : "2px solid transparent",
-                  fontWeight: isActive ? "bold" : "normal",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
+                className={isActive ? TAB_ACTIVE : TAB_INACTIVE}
               >
                 {t.label}
               </Link>
@@ -130,7 +126,7 @@ export default function Show({
         </nav>
 
         {articles.length === 0 ? (
-          <p style={{ color: "#888" }}>No articles are here... yet.</p>
+          <p className="text-[#888]">No articles are here... yet.</p>
         ) : (
           articles.map((article) => (
             <ArticleCard key={article.slug} article={article} />
@@ -151,7 +147,7 @@ export default function Show({
         />
       </section>
 
-      <p style={{ marginTop: "2rem" }}>
+      <p className="mt-8">
         <Link href="/">← Home</Link>
       </p>
     </main>

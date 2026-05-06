@@ -30,7 +30,7 @@ export default function New() {
             />
           </label>
           {form.errors.title && (
-            <p style={{ color: "red" }}>{form.errors.title}</p>
+            <p className="text-[red]">{form.errors.title}</p>
           )}
         </div>
         <div>
@@ -43,7 +43,7 @@ export default function New() {
             />
           </label>
           {form.errors.description && (
-            <p style={{ color: "red" }}>{form.errors.description}</p>
+            <p className="text-[red]">{form.errors.description}</p>
           )}
         </div>
         <div>
@@ -56,7 +56,7 @@ export default function New() {
             />
           </label>
           {form.errors.body && (
-            <p style={{ color: "red" }}>{form.errors.body}</p>
+            <p className="text-[red]">{form.errors.body}</p>
           )}
         </div>
         <div>
@@ -66,7 +66,7 @@ export default function New() {
             onChange={(next) => form.setData("tagList", next)}
           />
           {form.errors.tagList && (
-            <p style={{ color: "red" }}>{form.errors.tagList}</p>
+            <p className="text-[red]">{form.errors.tagList}</p>
           )}
         </div>
         <button type="submit" disabled={form.processing}>

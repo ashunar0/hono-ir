@@ -38,7 +38,7 @@ export default function Settings() {
             />
           </label>
           {form.errors.image && (
-            <p style={{ color: "red" }}>{form.errors.image}</p>
+            <p className="text-[red]">{form.errors.image}</p>
           )}
         </div>
         <div>
@@ -51,7 +51,7 @@ export default function Settings() {
             />
           </label>
           {form.errors.username && (
-            <p style={{ color: "red" }}>{form.errors.username}</p>
+            <p className="text-[red]">{form.errors.username}</p>
           )}
         </div>
         <div>
@@ -64,7 +64,7 @@ export default function Settings() {
             />
           </label>
           {form.errors.bio && (
-            <p style={{ color: "red" }}>{form.errors.bio}</p>
+            <p className="text-[red]">{form.errors.bio}</p>
           )}
         </div>
         <div>
@@ -77,7 +77,7 @@ export default function Settings() {
             />
           </label>
           {form.errors.email && (
-            <p style={{ color: "red" }}>{form.errors.email}</p>
+            <p className="text-[red]">{form.errors.email}</p>
           )}
         </div>
         <div>
@@ -90,7 +90,7 @@ export default function Settings() {
             />
           </label>
           {form.errors.password && (
-            <p style={{ color: "red" }}>{form.errors.password}</p>
+            <p className="text-[red]">{form.errors.password}</p>
           )}
         </div>
         <button type="submit" disabled={form.processing}>
