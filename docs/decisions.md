@@ -314,10 +314,61 @@ features 側 (auth / articles / users) の 7 箇所すべてが c.forward (succe
 #### Phase 3 PR の素材として
 adapter (`@hono/inertia`) に提案する API は **c.back / c.forward の対称ペア** + sharedData。Inertia 流 server-driven flow の「flash + redirect」慣用句を 1 行化する value があり、Rails / Phoenix / Laravel の前例とも整合する。React 19 普及期の今、Phase 3 PR の説得力素材が 1 つ充実した。
 
+### Inertia 2 deferred props を user-land で実装 (H5)
+
+#### 経緯
+Optimistic UI / 404 / page-props builder / c.forward と Phase 2 系列の機能完成後、roadmap の H5 (deferred props) に着手。Inertia 2.0 specific 機能で、initial render に不要な props (Show の comments / Home の popularTags) を mount 後に後追いで load する仕掛け。RSC streaming / Astro Server Islands と同じ問題を Inertia 流に解いた API。`useOptimistic` を入れた直後だと「server stream (defer) × client optimistic」の対比で層の違いが見える。
+
+#### 設計の選び方 (3 案 → B 採用)
+- **A. `inertia()` を user-land で fork**: `src/lib/inertia.ts` に独自 renderer (~30 行)
+- **B. layered post-processing**: 新 middleware を sharedData の後ろに追加、response を後加工
+- **C. sharedData に同居**: shared data middleware を拡張
+
+ユーザー側の整理: 「PR 寄せ視点で fork (A) しないで、まず project 内で動くものを user-land で作って、出来栄え次第で adapter 強化路線に乗せる」という順序。これは sharedData / c.back / c.forward と同じ「Phase 1: user-land で実証 → Phase 3: adapter PR」の進め方。**B 採用**。
+
+server.ts への影響は 1 行 + import 1 行 (`app.use(inertiaDeferred())`)。defer() helper + inertiaDeferred() middleware は同じ file (`src/lib/inertia-defer.ts`) に同居。
+
+#### 仕様の壁: deferredProps は page object の top-level field
+sharedData が拡張する `auth` / `flash` / `errors` は **page.props 配下** なので「props を merge する」だけで足りる。一方 Inertia 2 protocol は `deferredProps` を **page object のトップレベル** に置く (`page.deferredProps`、`@inertiajs/react` の `<Deferred>` がそこを読む)。@hono/inertia 0.1.0 の renderer は page object を `{ component, props, url, version }` の 4 field 固定で組む → 注入の余地なし。
+
+→ original (sharedData → @hono/inertia) を呼んだ後の Response を後加工:
+- **JSON Inertia response**: `await response.json()` → `page.deferredProps = ...` → `JSON.stringify` で詰め直し
+- **HTML response**: 埋め込み `<script data-page="app" type="application/json">{...}</script>` の中身を regex で抽出 → JSON parse → `page.deferredProps = ...` → `serializePage` 流の `/` → `\/` エスケープを再適用 → 埋め戻し
+
+regex 置換は確かに fragility (改行・属性順・`<script>` 増殖等への脆弱性) があるが、**adapter 取り込み時に消える** (page object 構築の段階で直接 set すれば済む)。user-land 試行のコストとして受け入れた。
+
+#### Sentinel は class instance
+`defer<T>(cb: () => T | Promise<T>, group?: string): T` は plain object ではなく `class DeferredValue` のインスタンスを返す。理由:
+1. **sharedData の deepMerge (`isPlainObject` ガード) が拾わない**ので shared data と key 衝突しても安全に素通り
+2. **`instanceof` 1 行で識別**できる (Symbol-keyed plain object より確実)
+3. **型は T を透過** (`as unknown as T`) → service / route 側は通常 props と同じ型として書ける、runtime のみ sentinel
+
+#### Inline access の crash と子 component 抽出 pattern (公式踏襲)
+Home.tsx で `<Deferred>` の子に inline で `popularTags.length > 0 && (<aside>...</aside>)` を書いたら fallback render 時 (popularTags = undefined) に `.length` 触って crash。
+
+理由: JSX 子要素は **親 render で eagerly 評価** される。`<Deferred>` が描画切替判断するのは「children を mount するかどうか」だけで、子 element の構築自体は親の render 中に走る。`popularTags.length` は子 element 構築時点で評価される。
+
+→ **公式 docs の `<PermissionsChildComponent />` pattern** 踏襲、子 component (`PopularTagsAside`) に抽出。子 function は `<Deferred>` が children を mount するときだけ呼ばれる → tags は必ず `string[]` (undefined にならない)。Show.tsx の `CommentsSection` は元から子 component だったので無事だった (inline 危険は popularTags 側だけ)。
+
+#### partial reload の評価ロジックは「要求された defer key のみ」
+`X-Inertia-Partial-Data` header に key が含まれる時のみ callback 評価。defer 非要求の partial reload (Pagination の `["articles","articlesCount","query"]` 等) は callback 完全 skip で server work 省く。例: Home の Pagination で次ページに飛ぶときに popularTags の DB round-trip は走らない (もう client cache にある)。
+
+#### defer × useOptimistic 共存
+Comment add/delete (`only=["comments","flash"]`) は partial reload で **defer callback 評価 + flash 注入** が両立。useOptimistic の `id<0` pending 判定にも干渉なし。「層が直交してる」感が言語化された:
+- **defer** = 「いつ load するか」(server stream timing)
+- **useOptimistic** = 「往復中の体感」(client UI feedback)
+両者は同じ partial reload 経路を共有しても役割が違うので衝突しない。
+
+#### Phase 3 PR の素材として
+adapter (`@hono/inertia`) に取り込まれた未来予想図:
+- **defer 単独吸収**: `import { defer } from "@hono/inertia"` で済むようになる、`app.use(inertiaDeferred())` の 1 行と `src/lib/inertia-defer.ts` ファイルが消える
+- **全 PR (visit / sharedData / c.back-c.forward / defer) land 後**: `app.use(inertia({ rootView, share }))` の 1 middleware で 5 機能が吸収、project 固有の middleware は `loadAuth` のみ残る (5 → 2 middleware)
+- HTML response の regex 注入の fragility は adapter 内で page object 構築段階で直接 set できるようになるため自然解消
+
 ## 大物 (将来計画)
 
 ### Phase 3: user-land 拡張を upstream に PR
-**3 PR / 2 repo に分散して提案**:
+**4 PR / 2 repo に分散して提案**:
 
 - **`app/lib/inertia-router.ts` (visit Promise wrapper)** → `inertiajs/inertia` (`@inertiajs/core`)
   - `router.post` / `router.delete` 等が Promise を返す API、または `router.postAsync` 等の新メソッド追加
@@ -328,7 +379,10 @@ adapter (`@hono/inertia`) に提案する API は **c.back / c.forward の対称
 - **`src/lib/inertia-helpers.ts` (`c.back` / `c.forward` middleware)** → `honojs/middleware` (`@hono/inertia`)
   - redirect-back + flash + errors の 1 行 helper、および明示 URL に進む対称 API (`c.forward`)
   - 「flash + redirect」慣用句の 1 行化、Rails / Phoenix / Laravel と整合
+- **`src/lib/inertia-defer.ts` (deferred props: `defer` + `inertiaDeferred` middleware)** → `honojs/middleware` (`@hono/inertia`)
+  - Inertia 2 の `<Deferred>` 受け側 (page object 構築段階で `deferredProps` を top-level に set)
+  - user-land では post-process (regex 置換) で乗せたが adapter 取り込みで自然解消、page object 構築フックで直接 set できる
 
-PR 受け入れ難易度: `@hono/inertia` < `inertiajs/inertia` (community adapter は メンテナ少人数で意思決定速い、本体は要 discussion 経由)。**順序**: 先に `@hono/inertia` 側 2 PR で実績作る → 後で本体に Promise router 提案。タイミング的には React 19 普及期の今が「`useOptimistic` 連携必須論」が立ちやすくて◎。
+PR 受け入れ難易度: `@hono/inertia` < `inertiajs/inertia` (community adapter は メンテナ少人数で意思決定速い、本体は要 discussion 経由)。**順序**: 先に `@hono/inertia` 側 3 PR で実績作る → 後で本体に Promise router 提案。タイミング的には React 19 + Inertia 2 普及期の今が「`useOptimistic` × Deferred 連携必須論」が立ちやすくて◎。
 
 flash 通知 (success / error) は app-side のままにする (Laravel-Inertia 同様、adapter には入れない)
