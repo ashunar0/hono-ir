@@ -10,10 +10,10 @@ type Props = {
   only: string[];
 };
 
-const BASE = "inline-flex items-center gap-1 px-2 py-1 text-[0.85rem] border rounded-[4px] bg-transparent";
-const baseClass = `${BASE} border-[#ccc] cursor-pointer`;
+const BASE = "inline-flex items-center gap-1 px-2 py-1 text-sm border rounded-[4px] bg-transparent";
+const baseClass = `${BASE} border-gray-300 cursor-pointer`;
 const activeClass = `${BASE} border-[#e57373] bg-[#ffe5e5] text-[#c62828] cursor-pointer`;
-const guestClass = `${BASE} border-[#ccc] cursor-default text-[#888]`;
+const guestClass = `${BASE} border-gray-300 cursor-default text-gray-500`;
 
 export function FavoriteButton({
   slug,

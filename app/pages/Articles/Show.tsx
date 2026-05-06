@@ -18,7 +18,7 @@ export default function Show({ article, isAuthor, comments }: Props) {
     <>
       <article>
         <h1>{article.title}</h1>
-        <div className="flex justify-between items-center text-[#666]">
+        <div className="flex justify-between items-center text-gray-600">
           <p className="m-0">
             by {article.author.username} ·{" "}
             {new Date(article.createdAt).toLocaleDateString()}
@@ -35,7 +35,7 @@ export default function Show({ article, isAuthor, comments }: Props) {
         </p>
         <div className="whitespace-pre-wrap">{article.body}</div>
         {article.tagList.length > 0 && (
-          <ul className="list-none mt-4 mb-0 mx-0 p-0 flex flex-wrap gap-[0.4rem]">
+          <ul className="list-none mt-4 mb-0 mx-0 p-0 flex flex-wrap gap-1.5">
             {article.tagList.map((tag) => (
               <li key={tag}>
                 <TagPill tag={tag} size="md" />
@@ -154,7 +154,7 @@ function CommentsSection({
             className="block w-full px-2 py-1"
           />
           {form.errors.body && (
-            <p className="m-0 text-[red] text-sm">{form.errors.body}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.body}</p>
           )}
           <button type="submit" className="px-4 py-2 self-start">
             Post Comment
@@ -167,7 +167,7 @@ function CommentsSection({
       )}
 
       {optimisticComments.length === 0 ? (
-        <p className="text-[#666]">No comments yet.</p>
+        <p className="text-gray-600">No comments yet.</p>
       ) : (
         <ul className="list-none p-0">
           {optimisticComments.map((comment) => {
@@ -178,12 +178,12 @@ function CommentsSection({
             return (
               <li
                 key={comment.id}
-                className={`border border-[#ddd] p-3 mb-2 ${
+                className={`border border-gray-200 p-3 mb-2 ${
                   isPending ? "opacity-50" : ""
                 }`}
               >
                 <p className="whitespace-pre-wrap m-0">{comment.body}</p>
-                <p className="text-[#666] text-[0.875rem] mt-2">
+                <p className="text-gray-600 text-sm mt-2">
                   by {comment.author.username} ·{" "}
                   {new Date(comment.createdAt).toLocaleDateString()}
                   {isAuthor && (

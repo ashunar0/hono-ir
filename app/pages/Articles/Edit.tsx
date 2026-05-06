@@ -33,7 +33,7 @@ export default function Edit({ article }: Props) {
             />
           </label>
           {form.errors.title && (
-            <p className="m-0 text-[red] text-sm">{form.errors.title}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.title}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -47,7 +47,7 @@ export default function Edit({ article }: Props) {
             />
           </label>
           {form.errors.description && (
-            <p className="m-0 text-[red] text-sm">{form.errors.description}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.description}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -61,7 +61,7 @@ export default function Edit({ article }: Props) {
             />
           </label>
           {form.errors.body && (
-            <p className="m-0 text-[red] text-sm">{form.errors.body}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.body}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -71,7 +71,7 @@ export default function Edit({ article }: Props) {
             onChange={(next) => form.setData("tagList", next)}
           />
           {form.errors.tagList && (
-            <p className="m-0 text-[red] text-sm">{form.errors.tagList}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.tagList}</p>
           )}
         </div>
         <button

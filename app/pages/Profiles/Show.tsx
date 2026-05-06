@@ -18,7 +18,7 @@ type Props = {
 const TAB_PARTIAL_KEYS = ["articles", "articlesCount", "query"];
 
 const TAB_BASE = "px-3 py-1 border-b-2 no-underline text-inherit";
-const TAB_ACTIVE = `${TAB_BASE} border-[#333] font-bold`;
+const TAB_ACTIVE = `${TAB_BASE} border-gray-800 font-bold`;
 const TAB_INACTIVE = `${TAB_BASE} border-transparent font-normal`;
 
 // 現在の tab / offset / limit から URL を組み立てる。tab 切替時は offset を 0 にリセット
@@ -124,7 +124,7 @@ export default function Show({
         </nav>
 
         {articles.length === 0 ? (
-          <p className="text-[#888]">No articles are here... yet.</p>
+          <p className="text-gray-500">No articles are here... yet.</p>
         ) : (
           articles.map((article) => (
             <ArticleCard key={article.slug} article={article} />

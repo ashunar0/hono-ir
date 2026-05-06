@@ -27,7 +27,7 @@ export default function Login() {
             />
           </label>
           {form.errors.email && (
-            <p className="m-0 text-[red] text-sm">{form.errors.email}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.email}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -41,7 +41,7 @@ export default function Login() {
             />
           </label>
           {form.errors.password && (
-            <p className="m-0 text-[red] text-sm">{form.errors.password}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.password}</p>
           )}
         </div>
         <button

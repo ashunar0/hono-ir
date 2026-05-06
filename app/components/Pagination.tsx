@@ -10,7 +10,7 @@ type Props = {
 
 const PARTIAL_KEYS = ["articles", "articlesCount", "query"] as const;
 
-const BASE = "inline-block px-2 py-1 mr-1 border border-[#ccc] no-underline text-inherit";
+const BASE = "inline-block px-2 py-1 mr-1 border border-gray-300 no-underline text-inherit";
 
 export function Pagination({ total, limit, offset, buildHref }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / limit));

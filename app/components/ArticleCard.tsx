@@ -8,13 +8,13 @@ const PARTIAL_KEYS = ["articles", "articlesCount", "query"];
 
 export function ArticleCard({ article }: { article: ArticleListView }) {
   return (
-    <article className="border-b border-[#ddd] py-4">
-      <header className="flex justify-between items-center mb-2 text-[0.9rem]">
+    <article className="border-b border-gray-200 py-4">
+      <header className="flex justify-between items-center mb-2 text-sm">
         <div>
           <Link href={`/profiles/${article.author.username}`}>
             @{article.author.username}
           </Link>
-          <span className="ml-2 text-[#888]">
+          <span className="ml-2 text-gray-500">
             {new Date(article.createdAt).toLocaleDateString()}
           </span>
         </div>
@@ -30,12 +30,12 @@ export function ArticleCard({ article }: { article: ArticleListView }) {
         className="text-inherit no-underline"
       >
         <h2 className="m-0 mb-1">{article.title}</h2>
-        <p className="m-0 text-[#555]">{article.description}</p>
+        <p className="m-0 text-gray-700">{article.description}</p>
       </Link>
-      <div className="flex justify-between items-center mt-2 text-[0.85rem]">
+      <div className="flex justify-between items-center mt-2 text-sm">
         <Link href={`/articles/${article.slug}`}>Read more...</Link>
         {article.tagList.length > 0 && (
-          <ul className="list-none m-0 p-0 flex flex-wrap gap-[0.3rem]">
+          <ul className="list-none m-0 p-0 flex flex-wrap gap-1">
             {article.tagList.map((tag) => (
               <li key={tag}>
                 <TagPill tag={tag} size="sm" />

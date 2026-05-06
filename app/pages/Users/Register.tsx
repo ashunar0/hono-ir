@@ -28,7 +28,7 @@ export default function Register() {
             />
           </label>
           {form.errors.username && (
-            <p className="m-0 text-[red] text-sm">{form.errors.username}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.username}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -42,7 +42,7 @@ export default function Register() {
             />
           </label>
           {form.errors.email && (
-            <p className="m-0 text-[red] text-sm">{form.errors.email}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.email}</p>
           )}
         </div>
         <div className="flex flex-col gap-1">
@@ -56,7 +56,7 @@ export default function Register() {
             />
           </label>
           {form.errors.password && (
-            <p className="m-0 text-[red] text-sm">{form.errors.password}</p>
+            <p className="m-0 text-red-500 text-sm">{form.errors.password}</p>
           )}
         </div>
         <button

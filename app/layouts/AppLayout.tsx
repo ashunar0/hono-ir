@@ -10,7 +10,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <header className="flex justify-between items-center px-4 py-2 border-b border-[#ccc] mb-4">
+      <header className="flex justify-between items-center px-4 py-2 border-b border-gray-300 mb-4">
         <Link href="/" className="font-bold no-underline text-inherit">
           Real World
         </Link>

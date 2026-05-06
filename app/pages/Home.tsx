@@ -15,7 +15,7 @@ type HomeProps = {
 const PARTIAL_KEYS = ["articles", "articlesCount", "query"] as const;
 
 const TAB_BASE = "px-3 py-1 no-underline text-inherit";
-const TAB_ACTIVE = `${TAB_BASE} font-bold border-b-2 border-[#333]`;
+const TAB_ACTIVE = `${TAB_BASE} font-bold border-b-2 border-gray-800`;
 const TAB_INACTIVE = `${TAB_BASE} font-normal`;
 
 // 現在の query を維持しつつ一部だけ差し替えた URL を組み立てる。
@@ -45,7 +45,7 @@ export default function Home({
       <h1>Hono × Inertia × React Tutorial</h1>
 
       {/* タブ。tag filter active 時は 3 つ目に Tag Feed を出す (Conduit 流派) */}
-      <nav className="border-b border-[#ccc] mb-4 pb-1">
+      <nav className="border-b border-gray-300 mb-4 pb-1">
         <Link
           href={buildHomeHref({
             ...query,
@@ -75,7 +75,7 @@ export default function Home({
           </Link>
         )}
         {query.tag && (
-          <span className="px-3 py-1 font-bold border-b-2 border-[#333]">
+          <span className="px-3 py-1 font-bold border-b-2 border-gray-800">
             # {query.tag}
           </span>
         )}
@@ -84,7 +84,7 @@ export default function Home({
       <div className="flex gap-8 items-start">
         <div className="flex-1">
           {articles.length === 0 ? (
-            <p className="text-[#888]">No articles are here... yet.</p>
+            <p className="text-gray-500">No articles are here... yet.</p>
           ) : (
             articles.map((article) => (
               <ArticleCard key={article.slug} article={article} />
@@ -102,9 +102,9 @@ export default function Home({
         </div>
 
         {popularTags.length > 0 && (
-          <aside className="w-64 p-3 bg-[#f5f5f5] rounded-sm">
+          <aside className="w-64 p-3 bg-gray-100 rounded-sm">
             <h3 className="mt-0 text-base">Popular Tags</h3>
-            <ul className="list-none p-0 m-0 flex flex-wrap gap-[0.3rem]">
+            <ul className="list-none p-0 m-0 flex flex-wrap gap-1">
               {popularTags.map((tag) => (
                 <li key={tag}>
                   <Link
@@ -116,7 +116,7 @@ export default function Home({
                     })}
                     only={[...PARTIAL_KEYS]}
                     preserveScroll
-                    className={`inline-block px-[0.6rem] py-[0.15rem] ${query.tag === tag ? "bg-[#333]" : "bg-[#888]"} text-white rounded-full text-[0.8rem] no-underline`}
+                    className={`inline-block px-[0.6rem] py-0.5 ${query.tag === tag ? "bg-[#333]" : "bg-[#888]"} text-white rounded-full text-[0.8rem] no-underline`}
                   >
                     {tag}
                   </Link>
