@@ -22,57 +22,65 @@ export default function Edit({ article }: Props) {
           e.preventDefault();
           form.put(`/articles/${article.slug}`);
         }}
+        className="max-w-md flex flex-col gap-4"
       >
-        <div>
-          <label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
             title
             <input
               type="text"
               value={form.data.title}
               onChange={(e) => form.setData("title", e.target.value)}
+              className="block w-full px-2 py-1"
             />
           </label>
           {form.errors.title && (
-            <p className="text-[red]">{form.errors.title}</p>
+            <p className="m-0 text-[red] text-sm">{form.errors.title}</p>
           )}
         </div>
-        <div>
-          <label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
             description
             <input
               type="text"
               value={form.data.description}
               onChange={(e) => form.setData("description", e.target.value)}
+              className="block w-full px-2 py-1"
             />
           </label>
           {form.errors.description && (
-            <p className="text-[red]">{form.errors.description}</p>
+            <p className="m-0 text-[red] text-sm">{form.errors.description}</p>
           )}
         </div>
-        <div>
-          <label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
             body
             <textarea
               value={form.data.body}
               onChange={(e) => form.setData("body", e.target.value)}
               rows={10}
+              className="block w-full px-2 py-1"
             />
           </label>
           {form.errors.body && (
-            <p className="text-[red]">{form.errors.body}</p>
+            <p className="m-0 text-[red] text-sm">{form.errors.body}</p>
           )}
         </div>
-        <div>
+        <div className="flex flex-col gap-1">
           <label>tags</label>
           <TagInput
             value={form.data.tagList}
             onChange={(next) => form.setData("tagList", next)}
           />
           {form.errors.tagList && (
-            <p className="text-[red]">{form.errors.tagList}</p>
+            <p className="m-0 text-[red] text-sm">{form.errors.tagList}</p>
           )}
         </div>
-        <button type="submit" disabled={form.processing}>
+        <button
+          type="submit"
+          disabled={form.processing}
+          className="px-4 py-2 self-start"
+        >
           Update
         </button>
       </form>

@@ -46,6 +46,7 @@ export function TagInput({ value, onChange }: Props) {
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={() => addTag(draft)}
+        className="block w-full px-2 py-1"
       />
       <div className="mt-[0.4rem] flex flex-wrap gap-[0.4rem]">
         {value.map((tag) => (

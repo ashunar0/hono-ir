@@ -94,19 +94,23 @@ function CommentForm({ slug }: { slug: string }) {
           onSuccess: () => form.reset("body"),
         });
       }}
-      className="mb-6"
+      className="max-w-md flex flex-col gap-2 mb-6"
     >
-      <div>
-        <textarea
-          value={form.data.body}
-          onChange={(e) => form.setData("body", e.target.value)}
-          rows={3}
-          placeholder="Write a comment..."
-          className="w-full"
-        />
-        {form.errors.body && <p className="text-[red]">{form.errors.body}</p>}
-      </div>
-      <button type="submit" disabled={form.processing}>
+      <textarea
+        value={form.data.body}
+        onChange={(e) => form.setData("body", e.target.value)}
+        rows={3}
+        placeholder="Write a comment..."
+        className="block w-full px-2 py-1"
+      />
+      {form.errors.body && (
+        <p className="m-0 text-[red] text-sm">{form.errors.body}</p>
+      )}
+      <button
+        type="submit"
+        disabled={form.processing}
+        className="px-4 py-2 self-start"
+      >
         Post Comment
       </button>
     </form>
